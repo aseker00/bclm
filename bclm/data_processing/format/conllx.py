@@ -154,7 +154,7 @@ class Morpheme:
         return result
 
     @staticmethod
-    def parse(fields: list[str]) -> 'Morpheme':
+    def parse(fields: iter) -> 'Morpheme':
         builder = Morpheme.Builder().form_is(fields[0])
         if fields[1] != '_':
             builder.lemma_is(fields[1])
