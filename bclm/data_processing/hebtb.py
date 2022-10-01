@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from bclm.data_processing import vocab
-from bclm.data_processing import heb_tagset
+from bclm.data_processing import hebtagset
 from bclm.data_processing.format import conllx
 
 # ['ID', 'FORM', 'LEMMA', 'CPOSTAG', 'FPOSTAG', 'FEATS', 'HEAD', 'DEPREL', 'TOKEN_ID', 'TOKEN']
@@ -13,11 +13,11 @@ MORPH_DEP_COLUMN_NAMES = conllx.CONLL_COLUMN_NANES[:-2] + conllx.LATTICE_COLUMN_
 
 # Lattice Format
 def format_morpheme(morpheme: conllx.Morpheme) -> list:
-    form_str = morpheme.form
+    form_str = morpheme.form if morpheme.form else '_'
     lemma_str = morpheme.lemma if morpheme.lemma else '_'
     cpostag_str = morpheme.cpostag.value if morpheme.cpostag else '_'
     fpostag_str = morpheme.fpostag.value if morpheme.fpostag else '_'
-    feats_str = heb_tagset.format_parsed_features(morpheme.feats) if morpheme.feats else '_'
+    feats_str = hebtagset.format_parsed_features(morpheme.feats) if morpheme.feats else '_'
     return [form_str, lemma_str, cpostag_str, fpostag_str, feats_str]
 
 
@@ -128,11 +128,11 @@ def process():
     tb_dataset = spmrl(raw_root_path / tb_name, tb_name, tb_partition)
     save_conll_morph_dataset(tb_dataset, interim_root_path / tb_name)
     morph_dataset = load_conll_morph_dataset(tb_partition, interim_root_path / tb_name)
-    morph_feat_vocabs = build_morph_feature_vocab(heb_tagset.morph_features)
-    morph_postag_vocabs = build_morph_postag_vocab(heb_tagset.postags)
+    morph_feat_vocabs = build_morph_feature_vocab(hebtagset.morph_features)
+    morph_postag_vocabs = build_morph_postag_vocab(hebtagset.postags)
     feats = extract_morph_features(tb_dataset)
     for feat in feats:
-        feature = heb_tagset.get_morph_feature_by_name(feat)
+        feature = hebtagset.get_morph_feature_by_name(feat)
         values = sorted(feature.full_names())
         print(f'{feat}: {values}')
     cpostags = sorted(extract_morph_postags(tb_dataset, 'cpostag'))

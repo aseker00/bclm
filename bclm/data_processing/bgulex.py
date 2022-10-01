@@ -1,5 +1,5 @@
 import pandas as pd
-from bclm.data_processing import hebtb, heb_tagset
+from bclm.data_processing import hebtb, hebtagset
 from bclm.data_processing.format import conllx
 from pathlib import Path
 import random
@@ -19,18 +19,18 @@ def _extract_postag(feats_str: str) -> (str, list[str]):
 
     # Handle multi-value POS tags
     # Look and see if this is the case (i.e. join 2 or more values as the POS tag)
-    while postag_index < len(feats) and postag in heb_tagset.postag_values:
-        if postag_index > 0:
-            print(f'multipart POS tag in {feats_str}: {postag}')
+    while postag_index < len(feats) and postag in hebtagset.postag_values:
+        # if postag_index > 0:
+        #     print(f'multipart POS tag in {feats_str}: {postag}')
         postag_index += 1
         postag = '-'.join(feats[:postag_index + 1])
 
     # No tag cases, e.g.: '', -MF-P-3, -F-S-2, -MF-P-2, -M-S-2, -F-S-3, -MF-S-1, -M-P-2, -F-P-2
     if postag_index == 0:
-        print(f'missing POS tag in {feats_str}')
+        # print(f'missing POS tag in {feats_str}')
         return None, feats[postag_index + 1:]
 
-    # Use the last postag index
+    # Use the last valid postag index
     postag = '-'.join(feats[:postag_index])
     return postag, feats[postag_index:]
 
@@ -42,7 +42,6 @@ def _parse_lex_feats(feat_str: str) -> dict:
     # The prefix part of the analysis could be (and often is) empty
     if len(feat_str) == 0:
         return result
-    # feats = feat_str.split('-')
 
     # Get POS tag and the rest of the features
     postag, feats = _extract_postag(feat_str)
@@ -51,19 +50,19 @@ def _parse_lex_feats(feat_str: str) -> dict:
 
         # Special case treatment - Personal Pronouns
         # PRP types: Demonstrative, Personal, Impersonal, Reference
-        # Sometime the PRP type (DEM, PERS, IMP, REF) is not positioned after the PRP pos tag (this case is handled by
-        # _extract_postag) but further down the feat_str
-        # In this case add this value to the POS tag:
+        # Sometime the PRP type (DEM, PERS, IMP, REF) is not positioned directly after the PRP pos tag (handled by
+        # _extract_postag) but further down the feat_str.
+        # Here we handle this case where the PRP type value is further down the feat string
         if feat == 'DEM' or feat == 'PERS' or feat == 'IMP' or feat == 'REF':
             postag = f"{result['pos']}-{feat}"
-            if postag in heb_tagset.postag_values:
+            if postag in hebtagset.postag_values:
                 result['pos'] = postag
                 continue
 
         # Short version lexicon feature values, e.g. M, F, MF, S, 1, 2, A, etc.
         # Map the lexicon-style feature values into conll features
-        feat_name = heb_tagset.get_morph_feature_name_by_value(feat)
-        feature = heb_tagset.get_morph_feature_by_name(feat_name)
+        feat_name = hebtagset.get_morph_feature_name_by_value(feat)
+        feature = hebtagset.get_morph_feature_by_name(feat_name)
         result[feat_name] = feature.get_value(feat).value
 
     return result
@@ -78,8 +77,10 @@ def _parse_suffix(feat_str: str, base: dict) -> dict:
 
 
 # Build a morpheme
-def _create_morpheme(form: str, lemma: str = None, postag: str = None, feats: dict = None) -> conllx.Morpheme:
-    builder = conllx.Morpheme.Builder(form=form)
+def _create_morpheme(form: str = None, lemma: str = None, postag: str = None, feats: dict = None) -> conllx.Morpheme:
+    builder = conllx.Morpheme.Builder()
+    if form:
+        builder.form_is(form)
     if lemma and lemma != 'unspecified':
         builder.lemma_is(lemma)
     if postag:
@@ -118,20 +119,56 @@ def _parse_preflex_features(feats_str: str) -> list:
 def _parse_lex_entry(entry: str) -> (str, list[list[conllx.Morpheme]]):
     analyses = []
     entry_parts = entry.split(' ')
-    form = entry_parts[0]
+    word = entry_parts[0]
     lemmas = entry_parts[2::2]
     feats = entry_parts[1::2]
     for lemma, feat in zip(lemmas, feats):
         analysis = []
         pref, base, suff = _parse_features(feat)
         postag = pref.pop('pos', None)
-        analysis.append(_create_morpheme(form, None, postag, pref))  # prefix
+        analysis.append(_create_morpheme(postag=postag, feats=pref))  # prefix
         postag = base.pop('pos', None)
-        analysis.append(_create_morpheme(form, lemma, postag, base))  # base
+        analysis.append(_create_morpheme(word, lemma, postag, base))  # base
         postag = suff.pop('pos', None)
-        analysis.append(_create_morpheme(form, None, postag, suff))  # suffix
+        analysis.append(_create_morpheme(postag=postag, feats=suff))  # suffix
         analyses.append(analysis)
-    return form, analyses
+    return word, analyses
+
+
+# Prefixed lexical analysis is one where the lexical entry has a prefix and in addition you can find the remainder
+# in the lexicon which means that the entry can be constructed from another lexical entry and a preflex entry
+#
+# Most lexical entries do not involve a prefix.
+# The exception are entries that have the DEF prefix, these require special treatment to set the prefix form (using
+# the first word character) and update the base form (removing the prefix character)
+def _get_prefixed_lex_entries(preflex_entries: dict, lex_entries: dict) -> dict[str:tuple]:
+    prefixed_analyses = {}
+    for word in lex_entries:
+        for i, a in enumerate(lex_entries[word]):
+            if a[0].cpostag is not None:
+                if a[0].cpostag != 'DEF':
+                    print(f'WARNING: unexpected lex entry prefix: {word}: {a[0].cpostag}')
+                    continue
+                pref_form, base_form = word[0], word[1:]
+                updated_analysis = []
+                if pref_form in preflex_entries:
+                    if base_form in lex_entries:
+                        pref_update = conllx.Morpheme.Builder(a[0]).form_is(pref_form).build()
+                        base_update = conllx.Morpheme.Builder(a[1]).form_is(base_form).build()
+                        updated_analysis = [pref_update, base_update, a[2]]
+                if len(updated_analysis) > 0:
+                    prefixed_analyses[word] = (i, updated_analysis)
+    return prefixed_analyses
+
+
+# Some lexical entries have prefixes - the DEF prefix.
+# In this we need to set the prefix form and update the base form
+def _fix_lex_prefixes(preflex_entries: dict, lex_entries: dict):
+    prefixed_analyses = _get_prefixed_lex_entries(preflex_entries, lex_entries)
+    print(f'Fixing {len(prefixed_analyses)} prefixed lexical analyses')
+    for word in prefixed_analyses:
+        (i, a) = prefixed_analyses[word]
+        lex_entries[word][i] = a
 
 
 # A preflex entry is formatted differently from the base lexicon
@@ -143,7 +180,8 @@ def _parse_preflex_entry(entry: str) -> (str, list):
     prefix = pref_entry_parts[0]
     feat_seqs = pref_entry_parts[2::2]
     form_seqs = pref_entry_parts[1::2]
-    builder = conllx.Morpheme.Builder(prefix)
+    builder = conllx.Morpheme.Builder()
+    builder.form_is(prefix)
     for forms_str, feats_str in zip(form_seqs, feat_seqs):
         analysis = []
         postags = _parse_preflex_features(feats_str)
@@ -158,12 +196,12 @@ def _parse_preflex_entry(entry: str) -> (str, list):
 
 # Normalize POS tags and morph features (turning lexicon style short feature values into treebank conll style values)
 def _norm_morpheme(morpheme: conllx.Morpheme) -> conllx.Morpheme:
-    return conllx.Morpheme.Builder()\
-        .form_is(morpheme.form)\
+    return conllx.Morpheme.Builder() \
+        .form_is(None if not morpheme.form else morpheme.form)\
         .lemma_is(None if not morpheme.lemma else morpheme.lemma)\
-        .cpostag_is(None if not morpheme.cpostag else heb_tagset.get_postag(morpheme.cpostag)) \
-        .fpostag_is(None if not morpheme.fpostag else heb_tagset.get_postag(morpheme.fpostag)) \
-        .feats_is(None if not morpheme.feats else heb_tagset.parse_features(morpheme.feats))\
+        .cpostag_is(None if not morpheme.cpostag else hebtagset.get_postag(morpheme.cpostag)) \
+        .fpostag_is(None if not morpheme.fpostag else hebtagset.get_postag(morpheme.fpostag)) \
+        .feats_is(None if not morpheme.feats else hebtagset.parse_features(morpheme.feats))\
         .build()
 
 
@@ -264,8 +302,9 @@ def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None
         with open(lex_file_path) as f:
             lines = [line.strip() for line in f.readlines()]
         for line in lines:
-            form, analyses = _parse_lex_entry(line)
-            lex_entries[form] = analyses
+            word, analyses = _parse_lex_entry(line)
+            lex_entries[word] = analyses
+    _fix_lex_prefixes(preflex_entries, lex_entries)
     return preflex_entries, lex_entries
 
 

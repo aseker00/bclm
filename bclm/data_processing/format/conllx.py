@@ -1,4 +1,8 @@
+from copy import copy
 from pathlib import Path
+
+import numpy as np
+
 from bclm.data_processing.format import conll_utils
 from collections import defaultdict
 
@@ -72,12 +76,19 @@ class Morpheme:
 
     class Builder:
 
-        def __init__(self, form: str = None):
-            self._form = form
-            self._lemma = None
-            self._cpostag = None
-            self._fpostag = None
-            self._feats = None
+        def __init__(self, orig: 'Morpheme' = None):
+            if orig is not None:
+                self._form = orig.form
+                self._lemma = orig.lemma
+                self._cpostag = orig.cpostag
+                self._fpostag = orig.fpostag
+                self._feats = copy(orig.feats)
+            else:
+                self._form = None
+                self._lemma = None
+                self._cpostag = None
+                self._fpostag = None
+                self._feats = None
 
         @property
         def form(self) -> str:

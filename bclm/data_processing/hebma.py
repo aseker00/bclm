@@ -12,22 +12,22 @@ class HebrewMorphAnalyzer:
 
     # Get all possible morphological analyses of the given word according to the given lexicon
     def analyze(self, word: str) -> list[list[conllx.Morpheme]]:
-        analyses = _get_lex_entries(self.lex_df, word)
-        analyses.extend(_analyze_combine(self.lex_df, self.preflex_df, word))
-        return analyses
+        lex_analyses = _get_lex_entries(self.lex_df, word)
+        preflex_analyses = _analyze_combine(self.lex_df, self.preflex_df, word)
+        valid_preflex_analyses = _remove_redundant_combinations(preflex_analyses, lex_analyses)
+        lex_analyses.extend(valid_preflex_analyses)
+        return lex_analyses
 
 
 def _lex_data_to_conll_analysis(analysis_data: pd.DataFrame) -> list[conllx.Morpheme]:
     pref, base, suff = bgulex.data_to_morphemes(analysis_data)
+    builder = conllx.Morpheme.Builder(base).fpostag_is(suff.cpostag)
     feats = base.feats
     if suff.feats:
         for f in suff.feats:
             feats[f'suf_{f}'] = suff.feats[f]
-    base = conllx.Morpheme.Builder(base.form)\
-        .lemma_is(base.lemma)\
-        .cpostag_is(base.cpostag)\
-        .fpostag_is(suff.cpostag)\
-        .feats_is(feats).build()
+        builder.feats_is(feats)
+    base = builder.build()
 
     # Filter out empty prefixes
     if pref.cpostag is not None:
@@ -93,11 +93,15 @@ def _analyze_combine(lex_df: pd.DataFrame, preflex_df: pd.DataFrame, word: str) 
     return analyses_combinations
 
 
-# Get all possible morphological analyses of the given word according to the given lexicon
-def _analyze(lex_df: pd.DataFrame, preflex_df: pd.DataFrame, word: str) -> list[list[conllx.Morpheme]]:
-    analyses = _get_lex_entries(lex_df, word)
-    analyses.extend(_analyze_combine(lex_df, preflex_df, word))
-    return analyses
+def _remove_redundant_combinations(preflex_combinations: list[list[conllx.Morpheme]],
+                                   lex_analyses: list[list[conllx.Morpheme]]):
+    valid_combinations = []
+    lex_analyses_with_prefix = {b[0].form: b for b in lex_analyses if b[0].cpostag is not None}
+    for a in preflex_combinations:
+        if a[0].form in lex_analyses_with_prefix:
+            continue
+        valid_combinations.append(a)
+    return valid_combinations
 
 
 def _load_word(p: Path) -> str:
@@ -144,7 +148,7 @@ def _format_analyses(analyses: list[list[conllx.Morpheme]]) -> list[list[str]]:
 if __name__ == '__main__':
     lexicon_root_path = Path('data/interim/HebrewResources/HebrewTreebank')
     ma = HebrewMorphAnalyzer(lexicon_root_path)
-    w = _load_word(Path('word.txt'))
-    word_analyses = ma.analyze(w)
+    word_to_analyze = _load_word(Path('word.txt'))
+    word_analyses = ma.analyze(word_to_analyze)
     lines = ['\t'.join(a) for a in _format_analyses(word_analyses)]
     print('\n'.join(lines))
