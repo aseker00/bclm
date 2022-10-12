@@ -7,6 +7,20 @@ from pathlib import Path
 import gzip
 
 
+class Numberbatch:
+
+    def __init__(self, languages: list[str]):
+        options = {'src_inter_partition_path': 'data/interim/numberbatch_txt_19.08'}
+        dfs = []
+        for lang in languages:
+            options['lang'] = lang
+            # [n, 1] dataframe, the index contains the words, the single column is the 300 dim vectors
+            dfs.append(_load_emb_df(options))
+        df = pd.concat(dfs)
+        self.words = df.index.tolist()
+        self.vectors = np.stack(df['vec'].to_numpy())
+
+
 # Numberbatch data downloaded from: https://github.com/commonsense/conceptnet-numberbatch
 # mini.h5 contain words in following languages: de, en, es, fr, it, ja, nl, pt, ru, zh
 # mini.h5 embeddings are int-based vectors, dim=300
@@ -73,13 +87,13 @@ def _get_lang_words(keys: np.ndarray) -> (np.ndarray, np.ndarray):
     return langs, words
 
 
-def raw_to_dataframe(keys: np.ndarray, values: np.ndarray) -> pd.DataFrame:
+def _raw_to_dataframe(keys: np.ndarray, values: np.ndarray) -> pd.DataFrame:
     langs, words = _get_lang_words(keys)
     # return pd.DataFrame({'lang': langs, 'word': words, 'vec': values}, columns=['lang', 'word', 'vec'])
     return pd.DataFrame(list(zip([langs, words, values])), columns=['lang', 'word', 'vec'])
 
 
-def raw_to_arrow(keys: np.ndarray, values: np.ndarray) -> pa.Table:
+def _raw_to_arrow(keys: np.ndarray, values: np.ndarray) -> pa.Table:
     langs, words = _get_lang_words(keys)
     langs = pa.array(langs)
     words = pa.array(words)
@@ -88,23 +102,23 @@ def raw_to_arrow(keys: np.ndarray, values: np.ndarray) -> pa.Table:
 
 
 # Save intermediate arrow
-def save_interm_partition(emb_table: pa.Table, dst_folder_path: Path):
+def _save_interm_partition(emb_table: pa.Table, dst_folder_path: Path):
     ds.write_dataset(emb_table, dst_folder_path, format="parquet", partitioning=["lang"],
                      existing_data_behavior='delete_matching')
     # partitioning=ds.partitioning(pa.schema([emb_table.schema.field("lang")])))
 
 
 # Load intermediate arrow
-def load_interm_partition(src_folder_path: Path) -> ds.Dataset:
+def _load_interm_partition(src_folder_path: Path) -> ds.Dataset:
     return ds.dataset(src_folder_path, format="parquet", partitioning=["lang"])
 
 
 # Transform arrow table to lang-specific dataframe
-def interm_to_dataframe(dataset: ds.Dataset, lang: str) -> pd.DataFrame:
+def _interm_to_dataframe(dataset: ds.Dataset, lang: str) -> pd.DataFrame:
     return dataset.to_table(filter=ds.field('lang') == lang).to_pandas()[['word', 'vec']].set_index('word')
 
 
-def process(options: dict):
+def _process(options: dict):
     words, vectors = [], []
     if options.get('src_raw_hdf5_path') is not None:
         words, vectors = load_raw_hdf5(options['src_raw_hdf5_path'])
@@ -112,20 +126,22 @@ def process(options: dict):
         words, vectors = load_raw_txt(options['src_raw_text_path'])
 
     if options.get('dst_inter_partition_path') is not None:
-        emb_table = raw_to_arrow(words, vectors)
-        save_interm_partition(emb_table, options['dst_inter_partition_path'])
+        emb_table = _raw_to_arrow(words, vectors)
+        _save_interm_partition(emb_table, options['dst_inter_partition_path'])
 
 
 # Load language specific word embeddings as a dataframe
-def load_emb_df(options: dict) -> pd.DataFrame:
+# df.shape = [n, 1] n rows, 1 column (300 dim vector of floats)
+# df.index = the list of embedding words
+def _load_emb_df(options: dict) -> pd.DataFrame:
     lang = options['lang']
     part_path = options['src_inter_partition_path']
-    emb_table = load_interm_partition(part_path)
-    return interm_to_dataframe(emb_table, lang)
+    emb_table = _load_interm_partition(part_path)
+    return _interm_to_dataframe(emb_table, lang)
 
 
 if __name__ == '__main__':
-    options = {
+    processing_options = {
         # 'src_raw_hdf5_path': Path('data/raw/numberbatch/mini.h5'),
         'src_raw_hdf5_path': None,
         'src_raw_text_path': Path('data/raw/numberbatch/numberbatch-19.08.txt.gz'),
@@ -140,6 +156,6 @@ if __name__ == '__main__':
         'src_inter_partition_path': 'data/interim/numberbatch_txt_19.08',
         'lang': 'he'
     }
-    # process(options)
-    df = load_emb_df(options)
-    print(df['vec'].values)
+    # _process(options)
+    loaded_df = _load_emb_df(processing_options)
+    print(loaded_df['vec'].values)
