@@ -233,7 +233,7 @@ BGULEX_COLUMNS = ['word', 'analysis', 'morpheme', 'form', 'lemma', 'cpostag', 'f
 # Turn lexical entries into conll format dataframe indexed to make it easy to search for word analyses.
 # Used to map words into all possible analyses and embed words as well as OOV words that are missing
 # from the embedding vocabulary by falling back on the lemmas
-def _lex_entries_to_dataframe(entries: dict) -> pd.DataFrame:
+def _lex_entries_to_dataframe(entries: dict[str:list]) -> pd.DataFrame:
     rows = [row for word in entries for row in _format_lex_analyses(word, entries[word])]
     return pd.DataFrame(rows, columns=BGULEX_COLUMNS).set_index(['word', 'analysis', 'morpheme'])
 
@@ -247,12 +247,12 @@ def _preflex_entries_to_dataframe(entries: dict) -> pd.DataFrame:
 
 
 # Save lexicon as a conll format dataframe
-def _save_interm_lex(entries: dict, dest_file_path: Path):
+def _save_interm_lex(entries: dict[str:list], dest_file_path: Path):
     dest_dir = dest_file_path.parent.absolute()
     if not dest_dir.exists():
         dest_dir.mkdir(parents=True, exist_ok=True)
-    lex_df = _lex_entries_to_dataframe(entries)
-    lex_df.to_csv(dest_file_path)
+    df = _lex_entries_to_dataframe(entries)
+    df.to_csv(dest_file_path)
 
 
 # Save preflex as a conll format dataframe
@@ -260,26 +260,30 @@ def _save_interm_preflex(entries: dict, dest_file_path: Path):
     dest_dir = dest_file_path.parent.absolute()
     if not dest_dir.exists():
         dest_dir.mkdir(parents=True, exist_ok=True)
-    lex_df = _preflex_entries_to_dataframe(entries)
-    lex_df.to_csv(dest_file_path)
+    df = _preflex_entries_to_dataframe(entries)
+    df.to_csv(dest_file_path)
 
 
 # Save lexical dataframe
 def _save_interm_lexicon(preflex_entries: dict, dest_preflex_file_path: Path,
-                         lex_entries: dict, dest_lex_file_path: Path):
+                         lex_entries: dict, dest_lex_file_path: Path,
+                         nikud_entries: dict, dest_nikud_file_path: Path):
     _save_interm_preflex(preflex_entries, dest_preflex_file_path)
     _save_interm_lex(lex_entries, dest_lex_file_path)
+    _save_interm_lex(nikud_entries, dest_nikud_file_path)
 
 
 # Load lexical dataframe
-def _load_interm_lexicon(preflex_src_file_path: Path, lex_src_file_path: Path) -> (pd.DataFrame, pd.DataFrame):
-    preflex_df = pd.read_csv(preflex_src_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
-    lex_df = pd.read_csv(lex_src_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
-    return preflex_df, lex_df
+def _load_interm_lexicon(preflex_file_path: Path, lex_file_path: Path, nikud_file_path: Path) -> (
+        pd.DataFrame, pd.DataFrame, pd.DataFrame):
+    preflex_df = pd.read_csv(preflex_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
+    lex_df = pd.read_csv(lex_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
+    nikud_df = pd.read_csv(nikud_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
+    return preflex_df, lex_df, nikud_df
 
 
 # Parse the preflex and lex files
-def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None) -> (dict[str:set], dict[str:set]):
+def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None) -> (dict[str:list], dict[str:list]):
     preflex_entries, lex_entries = {}, {}
     if preflex_file_path:
         with open(preflex_file_path) as f:
@@ -297,16 +301,43 @@ def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None
     return preflex_entries, lex_entries
 
 
+def _load_nikud() -> dict[str:list]:
+    nikud = {
+        ':': hebtagset.POSTag.POSTag_yyCLN,
+        ',': hebtagset.POSTag.POSTag_yyCM,
+        '-': hebtagset.POSTag.POSTag_yyDASH,
+        '.': hebtagset.POSTag.POSTag_yyDOT,
+        '...': hebtagset.POSTag.POSTag_yyELPS,
+        '!': hebtagset.POSTag.POSTag_yyEXCL,
+        '(': hebtagset.POSTag.POSTag_yyLRB,
+        '?': hebtagset.POSTag.POSTag_yyQM,
+        '"': hebtagset.POSTag.POSTag_yyQUOT,
+        ')': hebtagset.POSTag.POSTag_yyRRB,
+        ';': hebtagset.POSTag.POSTag_yySCLN
+    }
+    m = conllx.Morpheme.Builder().build()
+    entries = {}
+    for form in nikud:
+        base_builder = conllx.Morpheme.Builder()
+        base_builder = base_builder.form_is(form)
+        base_builder = base_builder.lemma_is(form)
+        base_builder = base_builder.cpostag_is(nikud[form].value)
+        base_builder = base_builder.fpostag_is(nikud[form].value)
+        entries[form] = [[m, base_builder.build(), m]]
+    return entries
+
+
 # Parse raw string values in dataframe into conllx enum values
 def data_to_morphemes(data: pd.DataFrame) -> list[conllx.Morpheme]:
     return [_norm_morpheme(conllx.Morpheme.parse(t[1:])) for t in data.itertuples()]
 
 
-def load(root_path: Path) -> (pd.DataFrame, pd.DataFrame):
+def load(root_path: Path) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame):
     lex_name = 'bgulex'
     preflex_file_path = root_path / lex_name / 'bgupreflex.csv'
     lex_file_path = root_path / lex_name / 'bgulex.csv'
-    return _load_interm_lexicon(preflex_file_path, lex_file_path)
+    nikud_file_path = root_path / lex_name / 'nikud.csv'
+    return _load_interm_lexicon(preflex_file_path, lex_file_path, nikud_file_path)
 
 
 def process():
@@ -317,11 +348,14 @@ def process():
     preflex_file_path = raw_root_path / lex_name / 'bgupreflex_withdef.utf8.hr'
     lex_file_path = raw_root_path / lex_name / 'bgulex.utf8.hr'
     preflex_entries, lex_entries = _load_raw_lexicon(preflex_file_path=preflex_file_path, lex_file_path=lex_file_path)
+    nikud_entries = _load_nikud()
     print(len(preflex_entries))
     print(len(lex_entries))
+    print(len(nikud_entries))
     preflex_file_path = interim_root_path / lex_name / 'bgupreflex.csv'
     lex_file_path = interim_root_path / lex_name / 'bgulex.csv'
-    _save_interm_lexicon(preflex_entries, preflex_file_path, lex_entries, lex_file_path)
+    nikud_file_path = interim_root_path / lex_name / 'nikud.csv'
+    _save_interm_lexicon(preflex_entries, preflex_file_path, lex_entries, lex_file_path, nikud_entries, nikud_file_path)
     for _ in range(10):
         form = random.choice(list(preflex_entries.keys()))
         for a in preflex_entries[form]:

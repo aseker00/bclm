@@ -125,8 +125,11 @@ class Analysis:
 
 class HebrewMorphAnalyzer:
 
-    def __init__(self, preflex: pd.DataFrame, lex: pd.DataFrame):
-        self.preflex, self.lex = preflex, lex
+    def __init__(self, preflex: pd.DataFrame, lex: pd.DataFrame, nikud: pd.DataFrame):
+        self.preflex, self.lex, self.nikud = preflex, lex, nikud
+        self.prefix_words = set(preflex.index.get_level_values(0).values)
+        self.lex_words = set(lex.index.get_level_values(0).values)
+        self.nikud_words = set(nikud.index.get_level_values(0).values)
         self.suffix_lemmas = self._get_suffix_lemmas()
         self.suffix_morphemes = self._get_suffix_morphemes()
         self.cache = {}
@@ -138,7 +141,8 @@ class HebrewMorphAnalyzer:
             preflex_analyses = self._analyze_combine(word)
             valid_preflex_analyses = _filter_duplicate_prefixes(preflex_analyses, lex_analyses)
             lex_analyses.extend(valid_preflex_analyses)
-
+            if not lex_analyses:
+                lex_analyses = self._get_nikud_entries(word)
             self.cache[word] = lex_analyses
         return self.cache[word]
 
@@ -222,20 +226,22 @@ class HebrewMorphAnalyzer:
             extracted[feats].add(prp)
         return {k: sorted(extracted[k], key=lambda x: len(x.form))[0] for k in extracted}
 
-    def _get_lex_entries(self, word: str) -> list[Analysis]:
-        # Verify word (lex entry exists), if not - skip it
-        try:
-            analyses_data = self.lex.loc[word].copy()
-        except KeyError:
+    def _get_nikud_entries(self, word: str) -> list[Analysis]:
+        if word not in self.nikud_words:
             return []
+        analyses_data = self.nikud.loc[word].copy()
+        return _lex_data_to_analyses(word, analyses_data)
+
+    def _get_lex_entries(self, word: str) -> list[Analysis]:
+        if word not in self.lex_words:
+            return []
+        analyses_data = self.lex.loc[word].copy()
         return _lex_data_to_analyses(word, analyses_data)
 
     def _get_preflex_entries(self, prefix: str) -> list[Analysis]:
-        # Verify prefix (preflex entry exists), if not - skip it
-        try:
-            prefixes_data = self.preflex.loc[prefix].copy()
-        except KeyError:
+        if prefix not in self.prefix_words:
             return []
+        prefixes_data = self.preflex.loc[prefix].copy()
         return _preflex_data_to_analyses(prefixes_data)
 
     # Break down the word into all possible prefixes and reminders
@@ -266,8 +272,11 @@ class HebrewMorphAnalyzer:
                     analyses_combinations.append(analysis_builder.build())
         return analyses_combinations
 
+    def _get_default_analyses(self, word: str) -> list[Analysis]:
+        pass
 
-def _lex_data_to_analyses(word: str, data: pd.DataFrame):
+
+def _lex_data_to_analyses(word: str, data: pd.DataFrame) -> list[Analysis]:
     analyses = []
     # Group by analysis index, level=0 is the word level (1=analysis, 2=morpheme)
     for _, analysis_data in data.groupby(level=0):
@@ -320,7 +329,7 @@ def _to_conllx_analysis(analysis: Analysis) -> Analysis:
     return analysis_builder.build()
 
 
-def _preflex_data_to_analyses(data: pd.DataFrame):
+def _preflex_data_to_analyses(data: pd.DataFrame) -> list[Analysis]:
     analyses = []
     # Group by analysis index, level=0 is the word level (1=analysis, 2=morpheme)
     for _, pref_data in data.groupby(level=0):
@@ -384,9 +393,7 @@ def _conllx_format_analyses(analyses: list[Analysis]) -> list[list[str]]:
 
 if __name__ == '__main__':
     root_path = Path('data/interim/HebrewResources/HebrewTreebank')
-    preflex_df, lex_df = bgulex.load(root_path)
-
-    ma = HebrewMorphAnalyzer(preflex_df, lex_df)
+    ma = HebrewMorphAnalyzer(*(bgulex.load(root_path)))
     word_to_analyze = _read_word(Path('word.txt'))
     word_analyses = ma.analyze_word(word_to_analyze)
     lines = ['\t'.join(a) for a in _conllx_format_analyses(word_analyses)]

@@ -154,6 +154,11 @@ if __name__ == '__main__':
         _build_morph_vocab(nbm.words, nb_word_weights, heb_ma)
     nb_words = nbm.words + nb_morph_words
     nb_word_weights = torch.cat([nb_word_weights, torch.stack(nb_morph_weights)])
+
+    nikud_tags = [tag for tag in heb_ma.nikud.cpostag if tag != '_']
+    nb_postags.extend(nikud_tags)
+    nb_postag_weights.extend([torch.rand(300, dtype=torch.float) for _ in nikud_tags])
+
     emb_model = MorphEmbeddingModel(nb_words, nb_word_weights,
                                     nb_postags, torch.stack(nb_postag_weights),
                                     nb_feats, torch.stack(nb_feat_weights))
