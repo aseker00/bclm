@@ -89,7 +89,6 @@ def _get_lang_words(keys: np.ndarray) -> (np.ndarray, np.ndarray):
 
 def _raw_to_dataframe(keys: np.ndarray, values: np.ndarray) -> pd.DataFrame:
     langs, words = _get_lang_words(keys)
-    # return pd.DataFrame({'lang': langs, 'word': words, 'vec': values}, columns=['lang', 'word', 'vec'])
     return pd.DataFrame(list(zip([langs, words, values])), columns=['lang', 'word', 'vec'])
 
 

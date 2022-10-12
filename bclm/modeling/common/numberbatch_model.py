@@ -99,7 +99,7 @@ def _get_expanded_forms(analysis: hebma.Analysis) -> list[str]:
     for prefix in analysis.prefixes:
         expanded_forms.append(prefix.form)
     expanded_forms.append(analysis.base.lemma)
-    if analysis.suffixes:
+    if len(analysis.suffixes) == 2:
         expanded_forms.append(analysis.suffixes[0].form)
     return expanded_forms
 
@@ -109,7 +109,9 @@ def _get_expanded_lemmas(analysis: hebma.Analysis) -> list[str]:
     for prefix in analysis.prefixes:
         expanded_lemmas.append(prefix.form)
     expanded_lemmas.append(analysis.base.lemma)
-    if analysis.suffixes:
+    if len(analysis.suffixes) == 1:
+        expanded_lemmas.append(analysis.suffixes[0].form)
+    elif len(analysis.suffixes) == 2:
         expanded_lemmas.append(analysis.suffixes[0].lemma)
         expanded_lemmas.append(analysis.suffixes[1].form)
     return expanded_lemmas
@@ -155,12 +157,12 @@ if __name__ == '__main__':
     emb_model = MorphEmbeddingModel(nb_words, nb_word_weights,
                                     nb_postags, torch.stack(nb_postag_weights),
                                     nb_feats, torch.stack(nb_feat_weights))
-    torch.save(emb_model, 'nb_emb_model.pt')
+    torch.save(emb_model, 'nb_morph_emb_model.pt')
 
-    emb_model = torch.load('nb_emb_model.pt')
+    emb_model = torch.load('nb_morph_emb_model.pt')
     print(emb_model.word_embedding)
     print(emb_model.postag_embedding)
     print(emb_model.feat_embedding)
     sample_sentence = _read_words(Path('words.txt'))
-    for t in emb_model.embed_words(sample_sentence, heb_ma):
-        print(t)
+    for word_vec in emb_model.embed_words(sample_sentence, heb_ma):
+        print(word_vec)

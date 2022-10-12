@@ -125,8 +125,8 @@ class Analysis:
 
 class HebrewMorphAnalyzer:
 
-    def __init__(self, preflex_df: pd.DataFrame, lex_df: pd.DataFrame):
-        self.preflex_df, self.lex_df = preflex_df, lex_df
+    def __init__(self, preflex: pd.DataFrame, lex: pd.DataFrame):
+        self.preflex, self.lex = preflex, lex
         self.suffix_lemmas = self._get_suffix_lemmas()
         self.suffix_morphemes = self._get_suffix_morphemes()
         self.cache = {}
@@ -156,25 +156,26 @@ class HebrewMorphAnalyzer:
 
     def _expand_suffix(self, suffix: conllx.Morpheme) -> list[conllx.Morpheme]:
         feats = hebtagset.format_parsed_features(suffix.feats)
-        suffix_analysis = self.suffix_morphemes[suffix.cpostag.value][feats]
-        return suffix_analysis.morphemes
+        return self.suffix_morphemes[suffix.cpostag.value][feats]
 
     def _get_suffix_lemmas(self) -> dict[str:str]:
-        possessive = self.lex_df[self.lex_df.cpostag == 'POS'].copy()  # S_PP
+        possessive = self.lex[self.lex.cpostag == 'POS'].copy()  # S_PP
         s_pp_lemma = possessive['lemma'].unique()[0]
-        accusative = self.lex_df[self.lex_df.cpostag == 'AT'].copy()  # S_ANP
+        accusative = self.lex[self.lex.cpostag == 'AT'].copy()  # S_ANP
         s_anp_lemma = accusative['lemma'].unique()[0]
-        pronouns = self.lex_df[self.lex_df.cpostag == 'PRP-PERS'].copy()  # S_PRN
+        pronouns = self.lex[self.lex.cpostag == 'PRP-PERS'].copy()  # S_PRN
         pronoun_lemmas = pronouns.groupby('lemma')['lemma']
         pronoun_lemmas = pronoun_lemmas.count().reset_index(name='count').sort_values('count', ascending=False)
         s_prn_lemma = pronoun_lemmas.iloc[0].lemma
         return {'S_PRN': s_prn_lemma, 'S_PP': s_pp_lemma, 'S_ANP': s_anp_lemma}
 
-    def _get_suffix_morphemes(self) -> dict[str:dict[str:Analysis]]:
+    def _get_suffix_morphemes(self) -> dict[str:dict[str:list[conllx.Morpheme]]]:
         s_prn_morphemes = self._get_s_prn_morphemes()
         s_pp_morphemes = self._get_s_pp_morphemes(s_prn_morphemes)
         s_anp_morphemes = self._get_s_anp_morphemes(s_prn_morphemes)
-        return {'S_PRN': s_prn_morphemes, 'S_PP': s_pp_morphemes, 'S_ANP': s_anp_morphemes}
+        return {'S_PRN': {k: [s_prn_morphemes[k]] for k in s_prn_morphemes},
+                'S_PP': {k: s_pp_morphemes[k].morphemes for k in s_pp_morphemes},
+                'S_ANP': {k: s_anp_morphemes[k].morphemes for k in s_anp_morphemes}}
 
     def _extract_suffix_analysis(self, data: pd.DataFrame, prp: dict[str:conllx.Morpheme]) -> dict[str:Analysis]:
         extracted = defaultdict(set)
@@ -201,18 +202,18 @@ class HebrewMorphAnalyzer:
         return {k: sorted(extracted[k], key=lambda x: len(x.base.form))[0] for k in extracted}
 
     def _get_s_pp_morphemes(self, prp: dict[str:conllx.Morpheme]) -> dict[str:Analysis]:
-        possessives = self.lex_df[self.lex_df.cpostag == 'POS'].copy()
+        possessives = self.lex[self.lex.cpostag == 'POS'].copy()
         possessives.loc[:, 'cpostag'] = 'S_PP'
         return self._extract_suffix_analysis(possessives, prp)
 
     def _get_s_anp_morphemes(self, prp: dict[str:conllx.Morpheme]) -> dict[str:Analysis]:
-        accusatives = self.lex_df[self.lex_df.cpostag == 'AT'].copy()
+        accusatives = self.lex[self.lex.cpostag == 'AT'].copy()
         accusatives.loc[:, 'cpostag'] = 'S_ANP'
         return self._extract_suffix_analysis(accusatives, prp)
 
     def _get_s_prn_morphemes(self) -> dict[str:conllx.Morpheme]:
         s_prn_lemma = self.suffix_lemmas['S_PRN']
-        pronouns = self.lex_df[(self.lex_df.cpostag == 'PRP-PERS') & (self.lex_df.lemma == s_prn_lemma)].copy()
+        pronouns = self.lex[(self.lex.cpostag == 'PRP-PERS') & (self.lex.lemma == s_prn_lemma)].copy()
         pronouns.loc[:, 'cpostag'] = 'S_PRN'
         prp_morphemes = bgulex.data_to_morphemes(pronouns)
         extracted = defaultdict(set)
@@ -224,7 +225,7 @@ class HebrewMorphAnalyzer:
     def _get_lex_entries(self, word: str) -> list[Analysis]:
         # Verify word (lex entry exists), if not - skip it
         try:
-            analyses_data = self.lex_df.loc[word].copy()
+            analyses_data = self.lex.loc[word].copy()
         except KeyError:
             return []
         return _lex_data_to_analyses(word, analyses_data)
@@ -232,7 +233,7 @@ class HebrewMorphAnalyzer:
     def _get_preflex_entries(self, prefix: str) -> list[Analysis]:
         # Verify prefix (preflex entry exists), if not - skip it
         try:
-            prefixes_data = self.preflex_df.loc[prefix].copy()
+            prefixes_data = self.preflex.loc[prefix].copy()
         except KeyError:
             return []
         return _preflex_data_to_analyses(prefixes_data)
