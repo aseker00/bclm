@@ -45,6 +45,14 @@ class Analysis:
     def lemmas(self) -> list[str]:
         return [m.lemma for m in self.morphemes if m.lemma]
 
+    @property
+    def cpostags(self) -> list[str]:
+        return [m.cpostag.value for m in self.morphemes if m.cpostag]
+
+    @property
+    def feats(self) -> list[str]:
+        return [hebtagset.format_parsed_features(m.feats) for m in self.morphemes if m.feats]
+
     def __len__(self):
         return len(self.morphemes)
 
