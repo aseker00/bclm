@@ -104,8 +104,8 @@ def _parse_preflex_features(feats_str: str) -> list:
 # Each entry in the lexicon is formatted as a word form followed by a list of possible analyses
 # Each analysis is represented as a ':' seperated list of morphemes (prefix, base, suffix)
 # Each morpheme is represented as a '-' seperated list of values (lemma, POS tag, features)
-def _parse_lex_entry(entry: str) -> (str, list[list[conllx.Morpheme]]):
-    analyses = []
+def _parse_lex_entry(entry: str) -> (str, list[tuple[conllx.Morpheme]]):
+    analyses = set()
     entry_parts = entry.split(' ')
     word = entry_parts[0]
     lemmas = entry_parts[2::2]
@@ -122,8 +122,8 @@ def _parse_lex_entry(entry: str) -> (str, list[list[conllx.Morpheme]]):
         analysis.append(_create_morpheme(word, lemma, postag, base))
         postag = suffix.pop('pos', None)
         analysis.append(_create_morpheme(postag=postag, feats=suffix))
-        analyses.append(analysis)
-    return word, analyses
+        analyses.add(tuple(analysis))
+    return word, list(analyses)
 
 
 # Prefixed lexical analysis is one where the lexical entry has a prefix and in addition you can find the remainder
@@ -132,11 +132,11 @@ def _parse_lex_entry(entry: str) -> (str, list[list[conllx.Morpheme]]):
 # Most lexical entries do not involve a prefix.
 # The exception are entries that have the DEF prefix, these require special treatment to set the prefix form (using
 # the first word character) and update the base form (removing the prefix character)
-def _get_prefixed_lex_entries(preflex_entries: dict, lex_entries: dict) -> dict[str:tuple]:
+def _get_prefixed_lex_entries(preflex_entries: dict[str:list], lex_entries: dict[str:list]) -> dict[str:tuple]:
     prefixed_analyses = {}
     for word in lex_entries:
         for i, a in enumerate(lex_entries[word]):
-            if a[0].cpostag is not None:
+            if a[0].cpostag:
                 if a[0].cpostag != 'DEF':
                     print(f'WARNING: unexpected lex entry prefix: {word}: {a[0].cpostag}')
                     continue
@@ -154,7 +154,7 @@ def _get_prefixed_lex_entries(preflex_entries: dict, lex_entries: dict) -> dict[
 
 # Some lexical entries have prefixes - the DEF prefix.
 # In this we need to set the prefix form and update the base form
-def _fix_lex_prefixes(preflex_entries: dict, lex_entries: dict):
+def _fix_lex_prefixes(preflex_entries: dict[str:list], lex_entries: dict[str:list]):
     prefixed_analyses = _get_prefixed_lex_entries(preflex_entries, lex_entries)
     print(f'Fixing {len(prefixed_analyses)} prefixed lexical analyses')
     for word in prefixed_analyses:
@@ -165,8 +165,8 @@ def _fix_lex_prefixes(preflex_entries: dict, lex_entries: dict):
 # A preflex entry is formatted differently from the base lexicon
 # A prefix entry can actually be made up of several prefixes (e.g. and when -> vekshe)
 # The word forms are seperated by a '^' and the POS tags are seperated by a '+'
-def _parse_preflex_entry(entry: str) -> (str, list):
-    analyses = []
+def _parse_preflex_entry(entry: str) -> (str, list[tuple[conllx.Morpheme]]):
+    analyses = set()
     pref_entry_parts = entry.split(' ')
     prefix = pref_entry_parts[0]
     feat_seqs = pref_entry_parts[2::2]
@@ -181,8 +181,8 @@ def _parse_preflex_entry(entry: str) -> (str, list):
             builder.form_is(form)
             builder.cpostag_is(postag)
             analysis.append(builder.build())
-        analyses.append(analysis)
-    return prefix, analyses
+        analyses.add(tuple(analysis))
+    return prefix, list(analyses)
 
 
 # Normalize POS tags and morph features (turning lexicon style short feature values into treebank conll style values)
@@ -279,7 +279,7 @@ def _load_interm_lexicon(preflex_src_file_path: Path, lex_src_file_path: Path) -
 
 
 # Parse the preflex and lex files
-def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None) -> (dict, dict):
+def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None) -> (dict[str:set], dict[str:set]):
     preflex_entries, lex_entries = {}, {}
     if preflex_file_path:
         with open(preflex_file_path) as f:
