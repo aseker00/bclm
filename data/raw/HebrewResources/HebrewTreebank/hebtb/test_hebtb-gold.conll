@@ -2694,7 +2694,7 @@
 21	צרכן	צרכן	NN	NN	gen=M|num=S	19	pobj	_	_
 22	.	_	yyDOT	yyDOT	_	3	punct	_	_
 
-1	תח22שאחדים	_	ZVL	ZVL	_	17	dep	_	_
+1	תח22שאחדים	_	JJ	JJ	_	17	dep	_	_
 2	מ	מ	PREPOSITION	PREPOSITION	_	17	subj	_	_
 3	בעלי	בעל	NNT	NNT	gen=M|num=P	2	pobj	_	_
 4	יחידות	יחידה	NNT	NNT	gen=F|num=P	3	gobj	_	_
@@ -6833,7 +6833,7 @@
 8	ו	ו	CONJ	CONJ	_	13	subj	_	_
 9	הנהלת	הנהלה	NNT	NNT	gen=F|num=S	8	conj	_	_
 10	מ	מ	ZVL	ZVL	_	9	dep	_	_
-11	קבוצה	קבוצה	ZVL	ZVL	_	9	hd	_	_
+11	קבוצה	קבוצה	NN	NN	_	9	hd	_	_
 12	לא	לא	RB	RB	_	13	neg	_	_
 13	הראו	הראה	VB	VB	gen=F|gen=M|num=P|per=3|tense=PAST	0	ROOT	_	_
 14	סימני	סימן	NNT	NNT	gen=M|num=P	13	obj	_	_
@@ -9364,7 +9364,7 @@
 18	קפצו	קיפץ	VB	VB	gen=F|gen=M|num=P|per=3|tense=PAST	16	conj	_	_
 19	ידם	יד	NN	NN_S_PP	gen=F|num=S|suf_gen=M|suf_num=P|suf_per=3	18	obj	_	_
 20	,	_	yyCM	yyCM	_	33	punct	_	_
-21	הרי	_	??	??	_	22	mod	_	_
+21	הרי	_	INTJ	INTJ	_	22	mod	_	_
 22	ב	ב	PREPOSITION	PREPOSITION	_	33	prepmod	_	_
 23	כל	כול	DTT	DTT	_	22	det	_	_
 24	ה	ה	REL	REL	_	22	rcmod	_	_
@@ -10557,7 +10557,7 @@
 2	שבועות	שבוע	NN	NN	gen=M|num=P	6	dep	_	_
 3	לאחר	לאחר	IN	IN	_	2	prepmod	_	_
 4	מ	מן	IN	IN	_	3	prep	_	_
-5	כן	_	??	??	per=3	4	pobj	_	_
+5	כן	_	RB	RB	per=3	4	pobj	_	_
 6	הודיעה	הודיע	VB	VB	gen=F|num=S|per=3|tense=PAST	21	conj	_	_
 7	מוסקווה	מוסקבה	NNP	NNP	_	6	subj	_	_
 8	על	על	IN	IN	_	6	prepmod	_	_
@@ -11524,7 +11524,7 @@
 
 1	קפתמונה1	_	ZVL	ZVL	_	5	dep	_	_
 2	,	_	yyCM	yyCM	_	5	punct	_	_
-3	71פעל	_	ZVL	ZVL	_	5	dep	_	_
+3	71פעל	_	IN	IN	_	5	dep	_	_
 4	אף	_	RB	RB	_	5	advmod	_	_
 5	תוספת	תוספת	NNT	NNT	gen=F|num=S	15	hd	_	_
 6	ה	ה	DEF	DEF	_	7	def	_	_
@@ -12123,7 +12123,7 @@
 1	מוצע	הוצע	BN	BN	gen=M|num=S|per=A	0	ROOT	_	_
 2	להעביר	העביר	VB	VB	tense=TOINFINITIVE	1	xcomp	_	_
 3	סמכות	סמכות	NN	NN	gen=F|num=S	2	obj	_	_
-4	זאתו	_	ZVL	ZVL	_	2	dep	_	_
+4	זאתו	_	PRP	PRP	_	2	dep	_	_
 5	ל	ל	PREPOSITION	PREPOSITION	_	2	prepmod	_	_
 6	ה	ה	DEF	DEF	_	7	def	_	_
 7	וועדה	ועדה	NN	NN	gen=F|num=S	5	pobj	_	_

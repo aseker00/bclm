@@ -4079,7 +4079,7 @@
 30	31	ארצות	ארץ	NNT	NNT	gen=F|num=P	22
 31	32	ה	ה	DEF	DEF	_	23
 32	33	ברית	ברית	NN	NN	gen=F|num=S	23
-33	34	כולה	כול	DT	DT	suf_gen=F|suf_num=S|suf_per=3	24
+33	34	כולה	כול	DT	S_PRN	suf_gen=F|suf_num=S|suf_per=3	24
 34	35	לצפות	צפה	VB	VB	tense=TOINFINITIVE	25
 35	36	ל	ל	PREPOSITION	PREPOSITION	_	26
 36	37	רשימת	רשימה	NNT	NNT	gen=F|num=S	26
