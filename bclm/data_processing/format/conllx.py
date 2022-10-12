@@ -1,8 +1,6 @@
 from copy import copy
 from pathlib import Path
 
-import numpy as np
-
 from bclm.data_processing.format import conll_utils
 from collections import defaultdict
 
@@ -58,6 +56,20 @@ class Morpheme:
     def feats(self) -> dict:
         return self._feats
 
+    def __bool__(self) -> bool:
+        return (self.form is not None or
+                self.lemma is not None or
+                self.cpostag is not None or
+                self.fpostag is not None or
+                self.feats is not None)
+
+    def __hash__(self):
+        return hash((self.form,
+                     self.lemma,
+                     self.cpostag,
+                     self.fpostag,
+                     self.feats if self.feats is None else frozenset(self.feats.items())))
+
     def __eq__(self, obj) -> bool:
         if not isinstance(obj, Morpheme):
             return False
@@ -66,13 +78,6 @@ class Morpheme:
                 self.cpostag == obj.cpostag and
                 self.fpostag == obj.fpostag and
                 self.feats == obj.feats)
-
-    def __hash__(self):
-        return hash((self.form,
-                     self.lemma,
-                     self.cpostag,
-                     self.fpostag,
-                     self.feats if self.feats is None else frozenset(self.feats.items())))
 
     class Builder:
 
@@ -166,7 +171,9 @@ class Morpheme:
 
     @staticmethod
     def parse(fields: iter) -> 'Morpheme':
-        builder = Morpheme.Builder().form_is(fields[0])
+        builder = Morpheme.Builder()
+        if fields[0] != '_':
+            builder.form_is(fields[0])
         if fields[1] != '_':
             builder.lemma_is(fields[1])
         if fields[2] != '_':

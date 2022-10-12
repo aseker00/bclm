@@ -78,7 +78,7 @@ def load_conll_morph_dataset(partition: list, src_dir: Path) -> dict[str:pd.Data
 
 # Generate all possible values for each morphological feature type
 # The result will be used to construct a morphological embedding vocabulary
-def extract_morph_features(dataset: dict[pd.DataFrame]) -> dict[str:set]:
+def extract_morph_features(dataset: dict[str:pd.DataFrame]) -> dict[str:set[str]]:
     result = defaultdict(set)
     for part in dataset:
         df = dataset[part]
@@ -104,7 +104,7 @@ def build_morph_feature_vocab(features: list) -> dict[str:vocab.Vocabulary]:
 
 # Generate all possible POS tags
 # The result will be used to construct a POS embedding vocabulary
-def extract_morph_postags(dataset: dict[pd.DataFrame], column_name) -> set[str]:
+def extract_morph_postags(dataset: dict[str:pd.DataFrame], column_name) -> set[str]:
     tags = set()
     for part in dataset:
         df = dataset[part]

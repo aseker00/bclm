@@ -17,7 +17,7 @@ def _extract_postag(feats_str: str) -> (str, list[str]):
     postag_index = 0
     postag = '-'.join(feats[:postag_index + 1])
 
-    # Handle multi-value POS tags
+    # Handle multi-value POS tags, e.g. PRP-PERS, CC-COORD etc.
     # Look and see if this is the case (i.e. join 2 or more values as the POS tag)
     while postag_index < len(feats) and postag in hebtagset.postag_values:
         # if postag_index > 0:
@@ -26,8 +26,9 @@ def _extract_postag(feats_str: str) -> (str, list[str]):
         postag = '-'.join(feats[:postag_index + 1])
 
     # No tag cases, e.g.: '', -MF-P-3, -F-S-2, -MF-P-2, -M-S-2, -F-S-3, -MF-S-1, -M-P-2, -F-P-2
+    # I fixed these in the raw lexicon file so this should not happen
     if postag_index == 0:
-        # print(f'missing POS tag in {feats_str}')
+        print(f'WARNING: missing POS tag in {feats_str}')
         return None, feats[postag_index + 1:]
 
     # Use the last valid postag index
@@ -68,14 +69,6 @@ def _parse_lex_feats(feat_str: str) -> dict:
     return result
 
 
-# Parse suffixes
-def _parse_suffix(feat_str: str, base: dict) -> dict:
-    # Handle Special case: S_PP -> NN_S_PP, CD_N_PP, BN_N_PP
-    if 'S_PP' in feat_str:
-        feat_str = feat_str.replace('S_PP', f"{base['pos']}_S_PP")
-    return _parse_lex_feats(feat_str)
-
-
 # Build a morpheme
 def _create_morpheme(form: str = None, lemma: str = None, postag: str = None, feats: dict = None) -> conllx.Morpheme:
     builder = conllx.Morpheme.Builder()
@@ -99,12 +92,7 @@ def _parse_preflex_feat(feat_str: str) -> list:
 # Each analysis is represented as a ':' seperated list of morphemes (prefix, base, suffix)
 def _parse_features(feats_str: str) -> (dict, dict, dict):
     parts = feats_str.split(':')
-    pref = _parse_lex_feats(parts[0])
-    base = _parse_lex_feats(parts[1])
-    if len(base) == 0:
-        print(f'WARNING: base should not be empty: {feats_str}')
-    suff = _parse_suffix(parts[2], base)
-    return pref, base, suff
+    return (_parse_lex_feats(p) for p in parts)
 
 
 # Preflex entries are also represented as a ':' seperated list of morphemes except that the list always contains
@@ -124,13 +112,16 @@ def _parse_lex_entry(entry: str) -> (str, list[list[conllx.Morpheme]]):
     feats = entry_parts[1::2]
     for lemma, feat in zip(lemmas, feats):
         analysis = []
-        pref, base, suff = _parse_features(feat)
-        postag = pref.pop('pos', None)
-        analysis.append(_create_morpheme(postag=postag, feats=pref))  # prefix
+        prefix, base, suffix = _parse_features(feat)
+        if len(base) == 0:
+            print(f'WARNING: lex entry base cannot be empty: {entry}')
+            continue
+        postag = prefix.pop('pos', None)
+        analysis.append(_create_morpheme(postag=postag, feats=prefix))
         postag = base.pop('pos', None)
-        analysis.append(_create_morpheme(word, lemma, postag, base))  # base
-        postag = suff.pop('pos', None)
-        analysis.append(_create_morpheme(postag=postag, feats=suff))  # suffix
+        analysis.append(_create_morpheme(word, lemma, postag, base))
+        postag = suffix.pop('pos', None)
+        analysis.append(_create_morpheme(postag=postag, feats=suffix))
         analyses.append(analysis)
     return word, analyses
 
@@ -197,8 +188,8 @@ def _parse_preflex_entry(entry: str) -> (str, list):
 # Normalize POS tags and morph features (turning lexicon style short feature values into treebank conll style values)
 def _norm_morpheme(morpheme: conllx.Morpheme) -> conllx.Morpheme:
     return conllx.Morpheme.Builder() \
-        .form_is(None if not morpheme.form else morpheme.form)\
-        .lemma_is(None if not morpheme.lemma else morpheme.lemma)\
+        .form_is(morpheme.form)\
+        .lemma_is(morpheme.lemma)\
         .cpostag_is(None if not morpheme.cpostag else hebtagset.get_postag(morpheme.cpostag)) \
         .fpostag_is(None if not morpheme.fpostag else hebtagset.get_postag(morpheme.fpostag)) \
         .feats_is(None if not morpheme.feats else hebtagset.parse_features(morpheme.feats))\
@@ -214,9 +205,7 @@ def _format_morpheme(morpheme: conllx.Morpheme) -> list[str]:
 # Transform single lexical analysis (prefix, base, suffix) into conll format
 def _format_lex_analysis(word: str, analysis_index: int, analysis: list[conllx.Morpheme]) -> list[list]:
     result = []
-    prefix = analysis[0]
-    base = analysis[1]
-    suffix = analysis[2]
+    prefix, base, suffix = analysis
     result.append([word, analysis_index, 0] + _format_morpheme(prefix))
     result.append([word, analysis_index, 1] + _format_morpheme(base))
     result.append([word, analysis_index, 2] + _format_morpheme(suffix))
@@ -284,8 +273,8 @@ def _save_interm_lexicon(preflex_entries: dict, dest_preflex_file_path: Path,
 
 # Load lexical dataframe
 def _load_interm_lexicon(preflex_src_file_path: Path, lex_src_file_path: Path) -> (pd.DataFrame, pd.DataFrame):
-    preflex_df = pd.read_csv(preflex_src_file_path, index_col=['word', 'analysis', 'morpheme'])
-    lex_df = pd.read_csv(lex_src_file_path, index_col=['word', 'analysis', 'morpheme'])
+    preflex_df = pd.read_csv(preflex_src_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
+    lex_df = pd.read_csv(lex_src_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
     return preflex_df, lex_df
 
 
