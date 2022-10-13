@@ -265,26 +265,21 @@ def _save_interm_preflex(entries: dict, dest_file_path: Path):
 
 
 # Save lexical dataframe
-def _save_interm_lexicon(preflex_entries: dict, dest_preflex_file_path: Path,
-                         lex_entries: dict, dest_lex_file_path: Path,
-                         nikud_entries: dict, dest_nikud_file_path: Path):
-    _save_interm_preflex(preflex_entries, dest_preflex_file_path)
-    _save_interm_lex(lex_entries, dest_lex_file_path)
-    _save_interm_lex(nikud_entries, dest_nikud_file_path)
+def _save_interm(preflex_entries: dict, preflex_file_path: Path, lex_entries: dict, lex_file_path: Path):
+    _save_interm_preflex(preflex_entries, preflex_file_path)
+    _save_interm_lex(lex_entries, lex_file_path)
 
 
 # Load lexical dataframe
-def _load_interm_lexicon(preflex_file_path: Path, lex_file_path: Path, nikud_file_path: Path) -> (
-        pd.DataFrame, pd.DataFrame, pd.DataFrame):
+def _load_interm(preflex_file_path: Path, lex_file_path: Path) -> (pd.DataFrame, pd.DataFrame):
     preflex_df = pd.read_csv(preflex_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
     lex_df = pd.read_csv(lex_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
-    nikud_df = pd.read_csv(nikud_file_path, index_col=['word', 'analysis', 'morpheme']).sort_index()
-    return preflex_df, lex_df, nikud_df
+    return preflex_df, lex_df
 
 
 # Parse the preflex and lex files
-def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None) -> (dict[str:list], dict[str:list]):
-    preflex_entries, lex_entries = {}, {}
+def _load_raw(preflex_file_path: Path = None, lex_file_path: Path = None) -> (dict[str:list], dict[str:list]):
+    preflex_entries, lex_entries, punct_entries = {}, {}, {}
     if preflex_file_path:
         with open(preflex_file_path) as f:
             lines = [line.strip() for line in f.readlines()]
@@ -301,8 +296,8 @@ def _load_raw_lexicon(preflex_file_path: Path = None, lex_file_path: Path = None
     return preflex_entries, lex_entries
 
 
-def _load_nikud() -> dict[str:list]:
-    nikud = {
+def _load_punct() -> dict[str:list]:
+    punct = {
         ':': hebtagset.POSTag.POSTag_yyCLN,
         ',': hebtagset.POSTag.POSTag_yyCM,
         '-': hebtagset.POSTag.POSTag_yyDASH,
@@ -316,15 +311,15 @@ def _load_nikud() -> dict[str:list]:
         ';': hebtagset.POSTag.POSTag_yySCLN
     }
     m = conllx.Morpheme.Builder().build()
-    entries = {}
-    for form in nikud:
+    punct_entries = {}
+    for form in punct:
         base_builder = conllx.Morpheme.Builder()
         base_builder = base_builder.form_is(form)
         base_builder = base_builder.lemma_is(form)
-        base_builder = base_builder.cpostag_is(nikud[form].value)
-        base_builder = base_builder.fpostag_is(nikud[form].value)
-        entries[form] = [[m, base_builder.build(), m]]
-    return entries
+        base_builder = base_builder.cpostag_is(punct[form].value)
+        base_builder = base_builder.fpostag_is(punct[form].value)
+        punct_entries[form] = [[m, base_builder.build(), m]]
+    return punct_entries
 
 
 # Parse raw string values in dataframe into conllx enum values
@@ -332,12 +327,11 @@ def data_to_morphemes(data: pd.DataFrame) -> list[conllx.Morpheme]:
     return [_norm_morpheme(conllx.Morpheme.parse(t[1:])) for t in data.itertuples()]
 
 
-def load(root_path: Path) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame):
+def load(root_path: Path) -> (pd.DataFrame, pd.DataFrame):
     lex_name = 'bgulex'
     preflex_file_path = root_path / lex_name / 'bgupreflex.csv'
     lex_file_path = root_path / lex_name / 'bgulex.csv'
-    nikud_file_path = root_path / lex_name / 'nikud.csv'
-    return _load_interm_lexicon(preflex_file_path, lex_file_path, nikud_file_path)
+    return _load_interm(preflex_file_path, lex_file_path)
 
 
 def process():
@@ -347,15 +341,16 @@ def process():
     lex_name = 'bgulex'
     preflex_file_path = raw_root_path / lex_name / 'bgupreflex_withdef.utf8.hr'
     lex_file_path = raw_root_path / lex_name / 'bgulex.utf8.hr'
-    preflex_entries, lex_entries = _load_raw_lexicon(preflex_file_path=preflex_file_path, lex_file_path=lex_file_path)
-    nikud_entries = _load_nikud()
+    preflex_entries, lex_entries = _load_raw(preflex_file_path=preflex_file_path, lex_file_path=lex_file_path)
+    punct_entries = _load_punct()
     print(len(preflex_entries))
     print(len(lex_entries))
-    print(len(nikud_entries))
+    print(len(punct_entries))
+
+    lex_entries.update(punct_entries)
     preflex_file_path = interim_root_path / lex_name / 'bgupreflex.csv'
     lex_file_path = interim_root_path / lex_name / 'bgulex.csv'
-    nikud_file_path = interim_root_path / lex_name / 'nikud.csv'
-    _save_interm_lexicon(preflex_entries, preflex_file_path, lex_entries, lex_file_path, nikud_entries, nikud_file_path)
+    _save_interm(preflex_entries, preflex_file_path, lex_entries, lex_file_path)
     for _ in range(10):
         form = random.choice(list(preflex_entries.keys()))
         for a in preflex_entries[form]:

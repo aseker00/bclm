@@ -125,26 +125,32 @@ class Analysis:
 
 class HebrewMorphAnalyzer:
 
-    def __init__(self, preflex: pd.DataFrame, lex: pd.DataFrame, nikud: pd.DataFrame):
-        self.preflex, self.lex, self.nikud = preflex, lex, nikud
-        self.prefix_words = set(preflex.index.get_level_values(0).values)
-        self.lex_words = set(lex.index.get_level_values(0).values)
-        self.nikud_words = set(nikud.index.get_level_values(0).values)
-        self.suffix_lemmas = self._get_suffix_lemmas()
-        self.suffix_morphemes = self._get_suffix_morphemes()
-        self.cache = {}
+    def __init__(self, preflex: pd.DataFrame, lex: pd.DataFrame):
+        self.preflex, self.lex = preflex, lex
+        self._prefix_vocab = set(preflex.index.get_level_values(0).values)
+        self._lex_vocab = set(lex.index.get_level_values(0).values)
+        self._punct_vocab = set(lex.loc[lex.cpostag.str.startswith('yy')].index.get_level_values(0).values)
+        self._suffix_lemmas = self._get_suffix_lemmas()
+        self._suffix_morphemes = self._get_suffix_morphemes()
+        self._default_analyses = _get_default_analyses(['NN', 'NNP'])
+        self._cache = {}
+
+    @property
+    def punct(self) -> pd.DataFrame:
+        return self.lex.loc[self.lex.cpostag.str.startswith('yy')]
 
     # Get all possible morphological analyses of the given word according to the given lexicon
     def analyze_word(self, word: str) -> list[Analysis]:
-        if word not in self.cache:
+        if word not in self._cache:
             lex_analyses = self._get_lex_entries(word)
-            preflex_analyses = self._analyze_combine(word)
-            valid_preflex_analyses = _filter_duplicate_prefixes(preflex_analyses, lex_analyses)
-            lex_analyses.extend(valid_preflex_analyses)
             if not lex_analyses:
-                lex_analyses = self._get_nikud_entries(word)
-            self.cache[word] = lex_analyses
-        return self.cache[word]
+                lex_analyses = self._get_default_analyses(word)
+            preflex_analyses = self._combine_prefixes(word)
+            if preflex_analyses:
+                valid_preflex_analyses = _filter_duplicate_prefixes(preflex_analyses, lex_analyses)
+                lex_analyses.extend(valid_preflex_analyses)
+            self._cache[word] = lex_analyses
+        return self._cache[word]
 
     def expand_suffixes(self, analysis: Analysis) -> Analysis:
         expanded_analysis_builder = Analysis.Builder()
@@ -160,7 +166,7 @@ class HebrewMorphAnalyzer:
 
     def _expand_suffix(self, suffix: conllx.Morpheme) -> list[conllx.Morpheme]:
         feats = hebtagset.format_parsed_features(suffix.feats)
-        return self.suffix_morphemes[suffix.cpostag.value][feats]
+        return self._suffix_morphemes[suffix.cpostag.value][feats]
 
     def _get_suffix_lemmas(self) -> dict[str:str]:
         possessive = self.lex[self.lex.cpostag == 'POS'].copy()  # S_PP
@@ -216,7 +222,7 @@ class HebrewMorphAnalyzer:
         return self._extract_suffix_analysis(accusatives, prp)
 
     def _get_s_prn_morphemes(self) -> dict[str:conllx.Morpheme]:
-        s_prn_lemma = self.suffix_lemmas['S_PRN']
+        s_prn_lemma = self._suffix_lemmas['S_PRN']
         pronouns = self.lex[(self.lex.cpostag == 'PRP-PERS') & (self.lex.lemma == s_prn_lemma)].copy()
         pronouns.loc[:, 'cpostag'] = 'S_PRN'
         prp_morphemes = bgulex.data_to_morphemes(pronouns)
@@ -226,26 +232,16 @@ class HebrewMorphAnalyzer:
             extracted[feats].add(prp)
         return {k: sorted(extracted[k], key=lambda x: len(x.form))[0] for k in extracted}
 
-    def _get_nikud_entries(self, word: str) -> list[Analysis]:
-        if word not in self.nikud_words:
-            return []
-        analyses_data = self.nikud.loc[word].copy()
-        return _lex_data_to_analyses(word, analyses_data)
-
     def _get_lex_entries(self, word: str) -> list[Analysis]:
-        if word not in self.lex_words:
-            return []
-        analyses_data = self.lex.loc[word].copy()
-        return _lex_data_to_analyses(word, analyses_data)
+        data = _get_lexical_data(word, self._lex_vocab, self.lex)
+        return _lex_data_to_analyses(word, data)
 
     def _get_preflex_entries(self, prefix: str) -> list[Analysis]:
-        if prefix not in self.prefix_words:
-            return []
-        prefixes_data = self.preflex.loc[prefix].copy()
-        return _preflex_data_to_analyses(prefixes_data)
+        data = _get_lexical_data(prefix, self._prefix_vocab, self.preflex)
+        return _preflex_data_to_analyses(data)
 
-    # Break down the word into all possible prefixes and reminders
-    def _analyze_combine(self, word: str) -> list[Analysis]:
+    # Break down the word into all possible prefixes and remainders
+    def _combine_prefixes(self, word: str) -> list[Analysis]:
         analyses_combinations = []
 
         # Try to break the word down into prefix + remainder
@@ -273,7 +269,26 @@ class HebrewMorphAnalyzer:
         return analyses_combinations
 
     def _get_default_analyses(self, word: str) -> list[Analysis]:
-        pass
+        analyses = []
+        for a in self._default_analyses:
+            m = conllx.Morpheme.Builder(a.base).form_is(word).lemma_is(word).build()
+            analyses.append(Analysis.Builder(a).base_is(m).build())
+        return analyses
+
+
+def _get_default_analyses(tags: list) -> list[Analysis]:
+    analyses = []
+    for tag in tags:
+        tag = hebtagset.get_postag(tag)
+        m = conllx.Morpheme.Builder().cpostag_is(tag).fpostag_is(tag).build()
+        analyses.append(Analysis.Builder().base_is(m).build())
+    return analyses
+
+
+def _get_lexical_data(word: str, vocab: set[str], lexicon: pd.DataFrame) -> pd.DataFrame:
+    if word in vocab:
+        return lexicon.loc[word].copy()
+    return pd.DataFrame()
 
 
 def _lex_data_to_analyses(word: str, data: pd.DataFrame) -> list[Analysis]:
@@ -393,8 +408,8 @@ def _conllx_format_analyses(analyses: list[Analysis]) -> list[list[str]]:
 
 if __name__ == '__main__':
     root_path = Path('data/interim/HebrewResources/HebrewTreebank')
-    ma = HebrewMorphAnalyzer(*(bgulex.load(root_path)))
+    heb_ma = HebrewMorphAnalyzer(*(bgulex.load(root_path)))
     word_to_analyze = _read_word(Path('word.txt'))
-    word_analyses = ma.analyze_word(word_to_analyze)
+    word_analyses = heb_ma.analyze_word(word_to_analyze)
     lines = ['\t'.join(a) for a in _conllx_format_analyses(word_analyses)]
     print('\n'.join(lines))

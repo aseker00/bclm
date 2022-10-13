@@ -45,7 +45,7 @@ class Feature(Enum):
 # See table 3 in https://arxiv.org/pdf/1908.05453.pdf
 class POSTag(Feature):
 
-    # yy, Nikud
+    # yy, punctuation
     POSTag_yyCLN = 'yyCLN'
     POSTag_yyCM = 'yyCM'
     POSTag_yyDASH = 'yyDASH'
@@ -106,7 +106,7 @@ class POSTag(Feature):
     POSTag_PRP_IMP = 'PRP-IMP'  # Impersonal? (as a noun), someone (mifhv), anyone (klfhv), everyone (kvlm)
     POSTag_PRP_REF = 'PRP-REF'  # Reference? NO. Reflexive! e.g. ecmi (atzmi) -> acm ani
     POSTag_PRP_DEM = 'PRP-DEM'  # Demonstrative? (as a preposition) these (alv, alh), that one (hhva, hhia), this (zh)
-    POSTag_PUNC = 'PUNC'  # Nikud
+    POSTag_PUNC = 'PUNC'  # Punctuation
     POSTag_QW = 'QW'  # Question/WH word
     POSTag_RB = 'RB'  # Adverb
     POSTag_REL = 'REL'  # Relativizer (f -> she)

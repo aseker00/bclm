@@ -17,32 +17,54 @@ class MorphEmbeddingModel(nn.Module):
 
         super().__init__()
         pad_vector = torch.zeros(word_weights.shape[1], dtype=word_weights.dtype)
-        self.word_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), word_weights]),
-                                                           padding_idx=0)
-        self.word_vocab = {word: i+1 for i, word in enumerate(words)}
+        self._word_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), word_weights]),
+                                                            padding_idx=0)
+        self._word_vocab = {word: i+1 for i, word in enumerate(words)}
 
         pad_vector = torch.zeros(postag_weights.shape[1], dtype=postag_weights.dtype)
-        self.postag_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), postag_weights]),
-                                                             padding_idx=0)
-        self.postag_vocab = {postag: i + 1 for i, postag in enumerate(postags)}
+        self._postag_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), postag_weights]),
+                                                              padding_idx=0)
+        self._postag_vocab = {postag: i + 1 for i, postag in enumerate(postags)}
 
         pad_vector = torch.zeros(feat_weights.shape[1], dtype=feat_weights.dtype)
-        self.feat_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), feat_weights]),
-                                                           padding_idx=0)
-        self.feat_vocab = {feat: i + 1 for i, feat in enumerate(feats)}
+        self._feat_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), feat_weights]),
+                                                            padding_idx=0)
+        self._feat_vocab = {feat: i + 1 for i, feat in enumerate(feats)}
+
+    @property
+    def word_embedding(self):
+        return self._word_embedding
+
+    @property
+    def postag_embedding(self):
+        return self._postag_embedding
+
+    @property
+    def feat_embedding(self):
+        return self._feat_embedding
 
     def embed_words(self, words: list[str], ma: hebma.HebrewMorphAnalyzer) -> torch.Tensor:
         forms, lemmas, postags, feats = _get_morph_analyses(words, ma)
         word_vectors = self._embed_words(words)
-        form_vectors = _embed_morph_values(forms, self.word_vocab, self.word_embedding)
-        lemma_vectors = _embed_morph_values(lemmas, self.word_vocab, self.word_embedding)
-        postag_vectors = _embed_morph_values(postags, self.postag_vocab, self.postag_embedding)
-        feat_vectors = _embed_morph_values(feats, self.feat_vocab, self.feat_embedding)
+        form_vectors = _embed_morph_values(forms, self._word_vocab, self._word_embedding)
+        lemma_vectors = _embed_morph_values(lemmas, self._word_vocab, self._word_embedding)
+        postag_vectors = _embed_morph_values(postags, self._postag_vocab, self._postag_embedding)
+        feat_vectors = _embed_morph_values(feats, self._feat_vocab, self._feat_embedding)
         return torch.mean(torch.stack([word_vectors, form_vectors, lemma_vectors, postag_vectors, feat_vectors]), dim=0)
 
     def _embed_words(self, words: list[str]) -> torch.Tensor:
-        emb_input = torch.tensor([self.word_vocab.get(word, 0) for word in words], dtype=torch.int)
-        return self.word_embedding(emb_input)
+        emb_input = torch.tensor([self._word_vocab.get(word, 0) for word in words], dtype=torch.int)
+        return self._word_embedding(emb_input)
+
+
+# TODO: Lookup multi-word entries in the numberbatch list of words, e.g. tel_aviv
+def _lookup_multi():
+    pass
+
+
+# TODO: Match to number templates, e.g. ##_## can represent any 2 2-digit numbers
+def _lookup_numbers():
+    pass
 
 
 def _embed_morph_values(word_analyses: list[list[list[str]]], vocab: dict[str:int],
@@ -150,19 +172,19 @@ if __name__ == '__main__':
     nbm = nb.Numberbatch(['he'])
     nb_word_weights = torch.FloatTensor(nbm.vectors)
 
-    (nb_morph_words, nb_morph_weights), (nb_postags, nb_postag_weights), (nb_feats, nb_feat_weights) = \
-        _build_morph_vocab(nbm.words, nb_word_weights, heb_ma)
-    nb_words = nbm.words + nb_morph_words
-    nb_word_weights = torch.cat([nb_word_weights, torch.stack(nb_morph_weights)])
-
-    nikud_tags = [tag for tag in heb_ma.nikud.cpostag if tag != '_']
-    nb_postags.extend(nikud_tags)
-    nb_postag_weights.extend([torch.rand(300, dtype=torch.float) for _ in nikud_tags])
-
-    emb_model = MorphEmbeddingModel(nb_words, nb_word_weights,
-                                    nb_postags, torch.stack(nb_postag_weights),
-                                    nb_feats, torch.stack(nb_feat_weights))
-    torch.save(emb_model, 'nb_morph_emb_model.pt')
+    # (nb_morph_words, nb_morph_weights), (nb_postags, nb_postag_weights), (nb_feats, nb_feat_weights) = \
+    #     _build_morph_vocab(nbm.words, nb_word_weights, heb_ma)
+    # nb_words = nbm.words + nb_morph_words
+    # nb_word_weights = torch.cat([nb_word_weights, torch.stack(nb_morph_weights)])
+    #
+    # puncts = heb_ma.punct.cpostag
+    # nb_postags.extend(puncts)
+    # nb_postag_weights.extend([torch.rand(300, dtype=torch.float) for _ in puncts])
+    #
+    # emb_model = MorphEmbeddingModel(nb_words, nb_word_weights,
+    #                                 nb_postags, torch.stack(nb_postag_weights),
+    #                                 nb_feats, torch.stack(nb_feat_weights))
+    # torch.save(emb_model, 'nb_morph_emb_model.pt')
 
     emb_model = torch.load('nb_morph_emb_model.pt')
     print(emb_model.word_embedding)
