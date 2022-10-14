@@ -41,8 +41,9 @@ class Feature(Enum):
     def get_name(cls, value: str):
         return cls.get_value(value).name
 
-
+# See PTB POS tag list: https://www.ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html
 # See table 3 in https://arxiv.org/pdf/1908.05453.pdf
+# See ONLP Lab docs: https://nlp.biu.ac.il/~rtsarfaty/onlp/hebrew/postags
 class POSTag(Feature):
 
     # yy, punctuation
@@ -65,19 +66,19 @@ class POSTag(Feature):
     POSTag_ZVL = 'ZVL'
 
     # Tags
-    POSTag_ADVERB = 'ADVERB'
-    POSTag_AT = 'AT'  # Accusative marker
+    POSTag_ADVERB = 'ADVERB'  # the prefix "like" (kaf)
+    POSTag_AT = 'AT'  # Accusative marker (at)
     POSTag_BN = 'BN'  # Present participle (BEINONI verb), gerund (noun made from verb)
     POSTag_BN_S_PP = 'BN_S_PP'  # Pronoun suffix - possessive (fl), Participle (BEINONI verb), e.g. manhiga -> manhig fl hia
     POSTag_BNT = 'BNT'  # Gerund/Participle in construct state (smikhut) form
-    POSTag_CC = 'CC'  # Coordinating conjunction
-    POSTag_CC_COORD = 'CC-COORD'  # Coordinating conjunction
+    POSTag_CC = 'CC'  # Conjunction
+    POSTag_CC_COORD = 'CC-COORD'  # Coordinating conjunction ("and", vav)
     POSTag_CC_REL = 'CC-REL'  # (afr -> asher)
     POSTag_CC_SUB = 'CC-SUB'  # Subordinating conjunction
-    POSTag_CD = 'CD'  # Numeral (definite)
+    POSTag_CD = 'CD'  # Cardinal numeral (definite)
     POSTag_CD_S_PP = 'CD_S_PP'  # Pronoun suffix - possessive (fl), e.g. alpita -> alpit fl hia
     POSTag_CDT = 'CDT'  # Numeral determiner (definite) in construct (smikhut) form
-    POSTag_CONJ = 'CONJ'
+    POSTag_CONJ = 'CONJ'  # Conjunction prefix (
     POSTag_COP = 'COP'  # Copula
     POSTag_COP_TOINFINITIVE = 'COP-TOINFINITIVE'  # to be
     POSTag_DEF = 'DEF'  # "The" (h)
@@ -90,7 +91,7 @@ class POSTag(Feature):
     POSTag_INTJ = 'INTJ'  # Interjection
     POSTag_JJ = 'JJ'  # Adjective
     POSTag_JJT = 'JJT'  # Construct state (smikhut) adjective
-    POSTag_MD = 'MD'  # Modal
+    POSTag_MD = 'MD'  # Modal predicates
     POSTag_NCD = 'NCD'  # Date/Time
     POSTag_NEG = 'NEG'
     POSTag_NN = 'NN'  # Noun (definite - definite-genetive)
@@ -109,13 +110,13 @@ class POSTag(Feature):
     POSTag_PUNC = 'PUNC'  # Punctuation
     POSTag_QW = 'QW'  # Question/WH word
     POSTag_RB = 'RB'  # Adverb
-    POSTag_REL = 'REL'  # Relativizer (f -> she)
+    POSTag_REL = 'REL'  # Relativizer prefix (f -> she, as well as h)
     POSTag_REL_SUBCONJ = 'REL-SUBCONJ'  # (f -> she)-lifney
     POSTag_S_PP = 'S_PP'  # Pronoun suffix - Possessive (fl), e.g. ildm -> ild fl hm, i.e. their child. See also NN_S_PP
     POSTag_S_PRN = 'S_PRN'  # Pronoun (Pronominal) suffix, e.g. klphm -> klpi hm, i.e. towards them
     POSTag_S_ANP = 'S_ANP'  # Pronoun suffix - Accusative/Nominative, e.g. labdh -> labd at hia, i.e. to lose her
     POSTag_TEMP = 'TEMP'  # Temporal
-    POSTag_TEMP_SUBCONJ = 'TEMP-SUBCONJ'  # WH / Subordinate Conj (e.g. when, kf -> kshe)
+    POSTag_TEMP_SUBCONJ = 'TEMP-SUBCONJ'  # WH / Subordinate Conj prefix (e.g. when, kf -> kshe)
     POSTag_TTL = 'TTL'  # Title (determiner)
     POSTag_VB = 'VB'  # Verb
     # POSTag_VB_BAREINFINITIVE = 'VB-BAREINFINITIVE'

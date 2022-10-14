@@ -129,15 +129,18 @@ class HebrewMorphAnalyzer:
         self.preflex, self.lex = preflex, lex
         self._prefix_vocab = set(preflex.index.get_level_values(0).values)
         self._lex_vocab = set(lex.index.get_level_values(0).values)
-        self._punct_vocab = set(lex.loc[lex.cpostag.str.startswith('yy')].index.get_level_values(0).values)
+
+        self.postags = set(lex[lex['cpostag'] != '_'].cpostag)
+        self.prefixes = set(preflex[preflex['cpostag'] != '_'].cpostag)
+        self.punctuations = set(t for t in self.postags if t.startswith('yy'))
+        self.suffixes = set(t for t in self.postags if t.startswith('S_'))
+        self.postags = self.postags.difference(self.punctuations).difference(self.suffixes)
+
         self._suffix_lemmas = self._get_suffix_lemmas()
         self._suffix_morphemes = self._get_suffix_morphemes()
         self._default_analyses = _get_default_analyses(['NN', 'NNP'])
-        self._cache = {}
 
-    @property
-    def punct(self) -> pd.DataFrame:
-        return self.lex.loc[self.lex.cpostag.str.startswith('yy')]
+        self._cache = {}
 
     # Get all possible morphological analyses of the given word according to the given lexicon
     def analyze_word(self, word: str) -> list[Analysis]:

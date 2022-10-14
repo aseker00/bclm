@@ -11,9 +11,7 @@ from bclm.data_processing import hebma
 
 class MorphEmbeddingModel(nn.Module):
 
-    def __init__(self, words: list, word_weights: torch.Tensor,
-                 postags: list, postag_weights: torch.Tensor,
-                 feats: list, feat_weights: torch.Tensor):
+    def __init__(self, words: list, word_weights: torch.Tensor, postags: list, postag_weights: torch.Tensor):
 
         super().__init__()
         pad_vector = torch.zeros(word_weights.shape[1], dtype=word_weights.dtype)
@@ -26,11 +24,6 @@ class MorphEmbeddingModel(nn.Module):
                                                               padding_idx=0)
         self._postag_vocab = {postag: i + 1 for i, postag in enumerate(postags)}
 
-        pad_vector = torch.zeros(feat_weights.shape[1], dtype=feat_weights.dtype)
-        self._feat_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), feat_weights]),
-                                                            padding_idx=0)
-        self._feat_vocab = {feat: i + 1 for i, feat in enumerate(feats)}
-
     @property
     def word_embedding(self):
         return self._word_embedding
@@ -39,22 +32,17 @@ class MorphEmbeddingModel(nn.Module):
     def postag_embedding(self):
         return self._postag_embedding
 
-    @property
-    def feat_embedding(self):
-        return self._feat_embedding
-
     def embed_words(self, words: list[str], ma: hebma.HebrewMorphAnalyzer) -> torch.Tensor:
-        forms, lemmas, postags, feats = _get_morph_analyses(words, ma)
+        forms, lemmas, postags = _get_morph_analyses(words, ma)
         word_vectors = self._embed_words(words)
-        form_vectors = _embed_morph_values(forms, self._word_vocab, self._word_embedding)
-        lemma_vectors = _embed_morph_values(lemmas, self._word_vocab, self._word_embedding)
-        postag_vectors = _embed_morph_values(postags, self._postag_vocab, self._postag_embedding)
-        feat_vectors = _embed_morph_values(feats, self._feat_vocab, self._feat_embedding)
-        return torch.mean(torch.stack([word_vectors, form_vectors, lemma_vectors, postag_vectors, feat_vectors]), dim=0)
+        form_vectors = _embed_morph_values(forms, self._word_vocab, self.word_embedding)
+        lemma_vectors = _embed_morph_values(lemmas, self._word_vocab, self.word_embedding)
+        postag_vectors = _embed_morph_values(postags, self._postag_vocab, self.postag_embedding)
+        return torch.mean(torch.stack([word_vectors, form_vectors, lemma_vectors, postag_vectors]), dim=0)
 
     def _embed_words(self, words: list[str]) -> torch.Tensor:
         emb_input = torch.tensor([self._word_vocab.get(word, 0) for word in words], dtype=torch.int)
-        return self._word_embedding(emb_input)
+        return self.word_embedding(emb_input)
 
 
 # TODO: Lookup multi-word entries in the numberbatch list of words, e.g. tel_aviv
@@ -67,8 +55,8 @@ def _lookup_numbers():
     pass
 
 
-def _embed_morph_values(word_analyses: list[list[list[str]]], vocab: dict[str:int],
-                        embedding: nn.Embedding) -> torch.Tensor:
+def _embed_morph_values(word_analyses: list[list[list[str]]], vocab: dict[str:int], embedding: nn.Embedding) -> (
+        torch.Tensor):
     word_indices = [[torch.tensor([vocab.get(value, 0) for value in analysis], dtype=torch.int)
                      for analysis in analyses] if analyses else [torch.tensor([0], dtype=torch.int)]
                     for analyses in word_analyses]
@@ -89,31 +77,24 @@ def _read_words(p: Path) -> list[str]:
 def _get_morph_analyses(words: list[str], ma: hebma.HebrewMorphAnalyzer) -> (
         list[list[list[str]]],
         list[list[list[str]]],
-        list[list[list[str]]],
         list[list[list[str]]]):
-    forms, lemmas, postags, feats = [], [], [], []
+    forms, lemmas, postags = [], [], []
     for word in words:
-        word_forms, word_lemmas, word_postags, word_feats = _analyze_expand(word, ma)
+        word_forms, word_lemmas, word_postags = _analyze_expand(word, ma)
         forms.append(word_forms)
         lemmas.append(word_lemmas)
         postags.append(word_postags)
-        feats.append(word_feats)
-    return forms, lemmas, postags, feats
+    return forms, lemmas, postags
 
 
-def _analyze_expand(word: str, ma: hebma.HebrewMorphAnalyzer) -> (
-        list[list[str]],
-        list[list[str]],
-        list[list[str]],
-        list[list[str]]):
-    word_forms, word_lemmas, word_postags, word_feats = [], [], [], []
+def _analyze_expand(word: str, ma: hebma.HebrewMorphAnalyzer) -> (list[list[str]], list[list[str]], list[list[str]]):
+    word_forms, word_lemmas, word_postags = [], [], []
     for a in ma.analyze_word(word):
         a = ma.expand_suffixes(a)
         word_forms.append(_get_expanded_forms(a))
         word_lemmas.append(_get_expanded_lemmas(a))
         word_postags.append(a.cpostags)
-        word_feats.append(a.feats)
-    return word_forms, word_lemmas, word_postags, word_feats
+    return word_forms, word_lemmas, word_postags
 
 
 def _get_expanded_forms(analysis: hebma.Analysis) -> list[str]:
@@ -139,30 +120,48 @@ def _get_expanded_lemmas(analysis: hebma.Analysis) -> list[str]:
     return expanded_lemmas
 
 
-def _build_morph_vocab(words: list, weights: torch.Tensor, ma: hebma.HebrewMorphAnalyzer) -> (
-        (list[str], list[torch.Tensor]),
-        (list[str], list[torch.Tensor]),
-        (list[str], list[torch.Tensor])):
-    words_vocab = set(words)
+# Look for forms and lemmas that are not in the numberbatch list of words (entries)
+# Compute the missing form/lemma embedding vectors by averaging the associated word vectors
+def _build_morph_vocab(entries: list[str], weights: torch.Tensor,
+                       ma: hebma.HebrewMorphAnalyzer) -> (list[str], list[torch.Tensor]):
+    entries_vocab = {e: i for i, e in enumerate(entries)}
     morph2vec = defaultdict(list)
-    pos2vec = defaultdict(list)
-    feat2vec = defaultdict(list)
-    for i, word in enumerate(words):
-        for a in ma.analyze_word(word):
-            if a.base.form not in words_vocab:
-                morph2vec[a.base.form].append(i)
-            if a.base.lemma not in words_vocab:
-                morph2vec[a.base.lemma].append(i)
-            pos2vec[a.base.cpostag.value].append(i)
-            if a.base.feats:
-                feat2vec[a.feats[0]].append(i)
+    for i, entry in enumerate(entries):
+        words = set(entry.split('_'))
+        for word in words:
+            for a in ma.analyze_word(word):
+                if a.base.form not in entries_vocab:
+                    morph2vec[a.base.form].append(i)
+                if a.base.lemma not in entries_vocab:
+                    morph2vec[a.base.lemma].append(i)
     morphs = list(morph2vec.keys())
-    postags = list(pos2vec.keys())
-    feats = list(feat2vec.keys())
-    morph_weights = [torch.mean(torch.stack([weights[i] for i in morph2vec[m]]), dim=0) for m in morphs]
-    postag_weights = [torch.mean(torch.stack([weights[i] for i in pos2vec[t]]), dim=0) for t in postags]
-    feat_weights = [torch.mean(torch.stack([weights[i] for i in feat2vec[f]]), dim=0) for f in feats]
-    return (morphs, morph_weights), (postags, postag_weights), (feats, feat_weights)
+    morph_weights = [weights[morph2vec[m]].mean(dim=0) for m in morphs]
+    return morphs, morph_weights
+
+
+# Build embeddings based on the lemmas associated with each POS tag
+# Add random vectors for punctuations
+def _build_postag_vocab(entries: list[str], weights: torch.Tensor,
+                        ma: hebma.HebrewMorphAnalyzer) -> (list[str], list[torch.Tensor]):
+    entries_vocab = {e: i for i, e in enumerate(entries)}
+    tag2vec = {}
+    for tag in ma.postags:
+        tag_lemmas = set(ma.lex[ma.lex.cpostag == tag].lemma)
+        tag_lemma_indices = [entries_vocab[lemma] for lemma in tag_lemmas if lemma in entries_vocab]
+        if tag_lemma_indices:
+            tag2vec[tag] = weights[tag_lemma_indices].mean(dim=0)
+    prefix2vec = {}
+    for prefix in ma.prefixes:
+        prefix_forms = set(ma.preflex[ma.preflex.cpostag == prefix].form)
+        prefix_form_indices = [entries_vocab[form] for form in prefix_forms if form in entries_vocab]
+        if prefix_form_indices:
+            prefix2vec[prefix] = weights[prefix_form_indices].mean(dim=0)
+    tag2vec.update(prefix2vec)
+    tags = list(tag2vec.keys())
+    tag_weights = [tag2vec[tag] for tag in tags]
+    tags.extend(ma.punctuations)
+    tag_weights.extend([torch.rand(weights.shape[1], dtype=weights.dtype) for _ in ma.punctuations])
+    return tags, tag_weights
 
 
 if __name__ == '__main__':
@@ -172,24 +171,18 @@ if __name__ == '__main__':
     nbm = nb.Numberbatch(['he'])
     nb_word_weights = torch.FloatTensor(nbm.vectors)
 
-    # (nb_morph_words, nb_morph_weights), (nb_postags, nb_postag_weights), (nb_feats, nb_feat_weights) = \
-    #     _build_morph_vocab(nbm.words, nb_word_weights, heb_ma)
-    # nb_words = nbm.words + nb_morph_words
-    # nb_word_weights = torch.cat([nb_word_weights, torch.stack(nb_morph_weights)])
-    #
-    # puncts = heb_ma.punct.cpostag
-    # nb_postags.extend(puncts)
-    # nb_postag_weights.extend([torch.rand(300, dtype=torch.float) for _ in puncts])
-    #
-    # emb_model = MorphEmbeddingModel(nb_words, nb_word_weights,
-    #                                 nb_postags, torch.stack(nb_postag_weights),
-    #                                 nb_feats, torch.stack(nb_feat_weights))
-    # torch.save(emb_model, 'nb_morph_emb_model.pt')
+    nb_tags, nb_tag_weights = _build_postag_vocab(nbm.words, nb_word_weights, heb_ma)
+
+    nb_morphs, nb_morph_weights = _build_morph_vocab(nbm.words, nb_word_weights, heb_ma)
+    nb_words = nbm.words + nb_morphs
+    nb_word_weights = torch.cat([nb_word_weights, torch.stack(nb_morph_weights)])
+
+    emb_model = MorphEmbeddingModel(nb_words, nb_word_weights, nb_tags, torch.stack(nb_tag_weights))
+    torch.save(emb_model, 'nb_morph_emb_model.pt')
 
     emb_model = torch.load('nb_morph_emb_model.pt')
     print(emb_model.word_embedding)
     print(emb_model.postag_embedding)
-    print(emb_model.feat_embedding)
     sample_sentence = _read_words(Path('words.txt'))
     for word_vec in emb_model.embed_words(sample_sentence, heb_ma):
         print(word_vec)
