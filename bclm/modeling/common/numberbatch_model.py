@@ -8,16 +8,18 @@ import torch.nn.functional as F
 from bclm.data_processing import numberbatch as nb, bgulex
 from bclm.data_processing import hebma
 
+import pygtrie
+
 
 class MorphEmbeddingModel(nn.Module):
 
-    def __init__(self, words: list, word_weights: torch.Tensor, postags: list, postag_weights: torch.Tensor):
+    def __init__(self, words: list[str], word_weights: torch.Tensor, postags: list[str], postag_weights: torch.Tensor):
 
         super().__init__()
         pad_vector = torch.zeros(word_weights.shape[1], dtype=word_weights.dtype)
         self._word_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), word_weights]),
                                                             padding_idx=0)
-        self._word_vocab = {word: i+1 for i, word in enumerate(words)}
+        self._word_vocab = {word.replace('_', ' '): i+1 for i, word in enumerate(words)}
 
         pad_vector = torch.zeros(postag_weights.shape[1], dtype=postag_weights.dtype)
         self._postag_embedding = nn.Embedding.from_pretrained(torch.cat([pad_vector.unsqueeze(0), postag_weights]),
@@ -25,29 +27,41 @@ class MorphEmbeddingModel(nn.Module):
         self._postag_vocab = {postag: i + 1 for i, postag in enumerate(postags)}
 
     @property
-    def word_embedding(self):
+    def embedding(self) -> nn.Embedding:
         return self._word_embedding
 
     @property
-    def postag_embedding(self):
+    def vocab(self) -> dict[str:int]:
+        return self._word_vocab
+
+    @property
+    def postag_embedding(self) -> nn.Embedding:
         return self._postag_embedding
 
-    def embed_words(self, words: list[str], ma: hebma.HebrewMorphAnalyzer) -> torch.Tensor:
+    @property
+    def postag_vocab(self) -> dict[str:int]:
+        return self._postag_vocab
+
+    def embed_words(self, words: list[str], ma: hebma.HebrewMorphAnalyzer, tree: pygtrie.CharTrie) -> torch.Tensor:
         forms, lemmas, postags = _get_morph_analyses(words, ma)
-        word_vectors = self._embed_words(words)
+        word_vectors = self._embed_words(words, tree)
         form_vectors = _embed_morph_values(forms, self._word_vocab, self.word_embedding)
         lemma_vectors = _embed_morph_values(lemmas, self._word_vocab, self.word_embedding)
         postag_vectors = _embed_morph_values(postags, self._postag_vocab, self.postag_embedding)
         return torch.mean(torch.stack([word_vectors, form_vectors, lemma_vectors, postag_vectors]), dim=0)
 
-    def _embed_words(self, words: list[str]) -> torch.Tensor:
-        emb_input = torch.tensor([self._word_vocab.get(word, 0) for word in words], dtype=torch.int)
+    def _embed_words(self, words: list[str], tree: pygtrie.CharTrie) -> torch.Tensor:
+        i = 0
+        emb_input = torch.zeros(len(words), dtype=torch.int)
+        while i < len(words):
+            longest_prefix = tree.longest_prefix(' '.join(words[i:]))
+            if longest_prefix.value:
+                parts = longest_prefix.key.split(' ')
+                emb_input[i] = self.vocab.get(longest_prefix.key)
+                i += len(parts)
+            else:
+                i += 1
         return self.word_embedding(emb_input)
-
-
-# TODO: Lookup multi-word entries in the numberbatch list of words, e.g. tel_aviv
-def _lookup_multi():
-    pass
 
 
 # TODO: Match to number templates, e.g. ##_## can represent any 2 2-digit numbers
@@ -130,9 +144,13 @@ def _build_morph_vocab(entries: list[str], weights: torch.Tensor,
         words = set(entry.split('_'))
         for word in words:
             for a in ma.analyze_word(word):
-                if a.base.form not in entries_vocab:
+                if a.base.form is None:
+                    print(f'build morph vocab missing form: {word}')
+                elif a.base.form not in entries_vocab:
                     morph2vec[a.base.form].append(i)
-                if a.base.lemma not in entries_vocab:
+                if a.base.lemma is None:
+                    print(f'build morph vocab missing lemma: {word}')
+                elif a.base.lemma not in entries_vocab:
                     morph2vec[a.base.lemma].append(i)
     morphs = list(morph2vec.keys())
     morph_weights = [weights[morph2vec[m]].mean(dim=0) for m in morphs]
@@ -172,17 +190,15 @@ if __name__ == '__main__':
     nb_word_weights = torch.FloatTensor(nbm.vectors)
 
     nb_tags, nb_tag_weights = _build_postag_vocab(nbm.words, nb_word_weights, heb_ma)
-
     nb_morphs, nb_morph_weights = _build_morph_vocab(nbm.words, nb_word_weights, heb_ma)
     nb_words = nbm.words + nb_morphs
     nb_word_weights = torch.cat([nb_word_weights, torch.stack(nb_morph_weights)])
-
     emb_model = MorphEmbeddingModel(nb_words, nb_word_weights, nb_tags, torch.stack(nb_tag_weights))
     torch.save(emb_model, 'nb_morph_emb_model.pt')
-
     emb_model = torch.load('nb_morph_emb_model.pt')
-    print(emb_model.word_embedding)
+    print(emb_model.embedding)
     print(emb_model.postag_embedding)
+    tree = pygtrie.StringTrie.fromkeys(emb_model.vocab.keys(), value=True, separator=' ')
     sample_sentence = _read_words(Path('words.txt'))
-    for word_vec in emb_model.embed_words(sample_sentence, heb_ma):
+    for word_vec in emb_model.embed_words(sample_sentence, heb_ma, tree):
         print(word_vec)
