@@ -3,6 +3,7 @@ from collections import defaultdict
 from bclm.data_processing import hebtb, bgulex, hebtagset
 from bclm.data_processing.format import conllx
 from pathlib import Path
+import re
 
 
 class Analysis:
@@ -127,27 +128,45 @@ class HebrewMorphAnalyzer:
 
     def __init__(self, preflex: pd.DataFrame, lex: pd.DataFrame):
         self.preflex, self.lex = preflex, lex
-        self._prefix_vocab = set(preflex.index.get_level_values(0).values)
-        self._lex_vocab = set(lex.index.get_level_values(0).values)
 
-        self.postags = set(lex[lex['cpostag'] != '_'].cpostag)
-        self.prefixes = set(preflex[preflex['cpostag'] != '_'].cpostag)
-        self.punctuations = set(t for t in self.postags if t.startswith('yy'))
-        self.suffixes = set(t for t in self.postags if t.startswith('S_'))
-        self.postags = self.postags.difference(self.punctuations).difference(self.suffixes)
+        # Prefix vocabulary
+        self.preflex_vocab = set(preflex.index.get_level_values(0).values)
 
+        # Prefix POS tags
+        self.prefix_tags = set(preflex[preflex['cpostag'] != '_'].cpostag)
+
+        # Lexical vocabulary
+        self.lex_vocab = set(lex.index.get_level_values(0).values)
+
+        # Lexical POS tags
+        self.lex_tags = set(lex[lex['cpostag'] != '_'].cpostag)
+
+        # Punctuation POS tags
+        self.punct_tags = set(t for t in self.lex_tags if t.startswith('yy'))
+
+        # Suffix POS tags
+        self.suffix_tags = set(t for t in self.lex_tags if t.startswith('S_'))
+
+        # Lexical POS tags
+        self.lex_tags = self.lex_tags.difference(self.punct_tags).difference(self.suffix_tags)
+
+        # Suffix mapping: break up suffixes into constituent morphemes
         self._suffix_lemmas = self._get_suffix_lemmas()
         self._suffix_morphemes = self._get_suffix_morphemes()
-        self._default_analyses = _get_default_analyses(['NN', 'NNP'])
+
+        # Default templates - used as default for OOV words
+        self._default_noun_analyses = _prepare_default_analyses(['NN', 'NNT', 'NNP'])
+        self._default_numeral_analyses = _prepare_default_analyses(['CD', 'CDT'])
 
         self._cache = {}
+
+        pattern = r"^[+-]?((\d+(\.\d+)?)|(\.\d+))$"
+        self.numeric_regexp = re.compile(pattern)
 
     # Get all possible morphological analyses of the given word according to the given lexicon
     def analyze_word(self, word: str) -> list[Analysis]:
         if word not in self._cache:
-            lex_analyses = self._get_lex_entries(word)
-            if not lex_analyses:
-                lex_analyses = self._get_default_analyses(word)
+            lex_analyses = self._get_lex_entries(word, True)
             preflex_analyses = self._combine_prefixes(word)
             if preflex_analyses:
                 valid_preflex_analyses = _filter_duplicate_prefixes(preflex_analyses, lex_analyses)
@@ -194,7 +213,7 @@ class HebrewMorphAnalyzer:
         extracted = defaultdict(set)
         for t in data.itertuples():
             word, i = t[0][:-1]
-            analysis = self._get_lex_entries(word)[i]
+            analysis = self._get_lex_entries(word, False)[i]
             if not analysis.suffixes:
                 continue
 
@@ -235,12 +254,18 @@ class HebrewMorphAnalyzer:
             extracted[feats].add(prp)
         return {k: sorted(extracted[k], key=lambda x: len(x.form))[0] for k in extracted}
 
-    def _get_lex_entries(self, word: str) -> list[Analysis]:
-        data = _get_lexical_data(word, self._lex_vocab, self.lex)
-        return _lex_data_to_analyses(word, data)
+    def _get_lex_entries(self, word: str, with_nn_defaults: bool) -> list[Analysis]:
+        data = _get_lexical_data(word, self.lex_vocab, self.lex)
+        lex_analyses = _lex_data_to_analyses(word, data)
+        if not lex_analyses:
+            if self.is_numeral(word):
+                lex_analyses = _get_default_analyses(word, self._default_numeral_analyses)
+            elif with_nn_defaults:
+                lex_analyses = _get_default_analyses(word, self._default_noun_analyses)
+        return lex_analyses
 
     def _get_preflex_entries(self, prefix: str) -> list[Analysis]:
-        data = _get_lexical_data(prefix, self._prefix_vocab, self.preflex)
+        data = _get_lexical_data(prefix, self.preflex_vocab, self.preflex)
         return _preflex_data_to_analyses(data)
 
     # Break down the word into all possible prefixes and remainders
@@ -249,15 +274,17 @@ class HebrewMorphAnalyzer:
 
         # Try to break the word down into prefix + remainder
         for i in range(1, len(word)):
-            prefix = word[:i]
-            remainder = word[i:]
 
-            # If the remainder or prefixes are empty - skip this one
-            remainder_analyses = self._get_lex_entries(remainder)
-            if len(remainder_analyses) == 0:
-                continue
+            # If there is no prefix - we're done
+            prefix = word[:i]
             preflex_analyses = self._get_preflex_entries(prefix)
             if len(preflex_analyses) == 0:
+                break
+
+            # If no remainder - skip it
+            remainder = word[i:]
+            remainder_analyses = self._get_lex_entries(remainder, False)
+            if len(remainder_analyses) == 0:
                 continue
 
             # Build different combinations of analyses
@@ -271,15 +298,20 @@ class HebrewMorphAnalyzer:
                     analyses_combinations.append(analysis_builder.build())
         return analyses_combinations
 
-    def _get_default_analyses(self, word: str) -> list[Analysis]:
-        analyses = []
-        for a in self._default_analyses:
-            m = conllx.Morpheme.Builder(a.base).form_is(word).lemma_is(word).build()
-            analyses.append(Analysis.Builder(a).base_is(m).build())
-        return analyses
+    def is_numeral(self, word: str) -> bool:
+        return bool(self.numeric_regexp.search(word))
 
 
-def _get_default_analyses(tags: list) -> list[Analysis]:
+def _get_default_analyses(word: str, defaults: list[Analysis]) -> list[Analysis]:
+    analyses = []
+    for a in defaults:
+        # m = conllx.Morpheme.Builder(a.base).form_is(word).lemma_is(word).build()
+        m = conllx.Morpheme.Builder(a.base).form_is(word).build()
+        analyses.append(Analysis.Builder(a).base_is(m).build())
+    return analyses
+
+
+def _prepare_default_analyses(tags: list) -> list[Analysis]:
     analyses = []
     for tag in tags:
         tag = hebtagset.get_postag(tag)
