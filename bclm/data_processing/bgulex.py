@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 from bclm.data_processing import hebtb, hebtagset
 from bclm.data_processing.format import conllx
@@ -329,6 +331,7 @@ def data_to_morphemes(data: pd.DataFrame) -> list[conllx.Morpheme]:
 
 def load(root_path: Path) -> (pd.DataFrame, pd.DataFrame):
     lex_name = 'bgulex'
+    logging.info(f'Loading BGU Lexicon from: {root_path / lex_name}')
     preflex_file_path = root_path / lex_name / 'bgupreflex.csv'
     lex_file_path = root_path / lex_name / 'bgulex.csv'
     return _load_interm(preflex_file_path, lex_file_path)

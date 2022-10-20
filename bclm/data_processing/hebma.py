@@ -175,20 +175,20 @@ class HebrewMorphAnalyzer:
         return self._cache[word]
 
     def expand_suffixes(self, analysis: Analysis) -> Analysis:
-        expanded_analysis_builder = Analysis.Builder()
+        expanded_analysis_builder = Analysis.Builder().word_is(analysis.word)
         prefixes = _to_conllx_prefixes(analysis)
         if prefixes:
             expanded_analysis_builder.prefixes_is(prefixes)
         base_builder = conllx.Morpheme.Builder(analysis.base)
         base_builder.fpostag_is(analysis.base.cpostag)
         if analysis.suffixes:
-            expanded_analysis_builder.suffixes_is(self._expand_suffix(analysis.suffixes[0]))
+            expanded_analysis_builder.suffixes_is(self.expand_suffix(analysis.suffixes[0]))
         expanded_analysis_builder.base_is(base_builder.build())
         return expanded_analysis_builder.build()
 
-    def _expand_suffix(self, suffix: conllx.Morpheme) -> list[conllx.Morpheme]:
+    def expand_suffix(self, suffix: conllx.Morpheme) -> list[conllx.Morpheme]:
         feats = hebtagset.format_parsed_features(suffix.feats)
-        return self._suffix_morphemes[suffix.cpostag.value][feats]
+        return self._suffix_morphemes[suffix.cpostag.value].get(feats, [])
 
     def _get_suffix_lemmas(self) -> dict[str:str]:
         possessive = self.lex[self.lex.cpostag == 'POS'].copy()  # S_PP
@@ -201,6 +201,7 @@ class HebrewMorphAnalyzer:
         s_prn_lemma = pronoun_lemmas.iloc[0].lemma
         return {'S_PRN': s_prn_lemma, 'S_PP': s_pp_lemma, 'S_ANP': s_anp_lemma}
 
+    # TODO: Map suffix tags to pronoun tags (S_PRN, S_PP, S_ANP -> PRP_PERS)?
     def _get_suffix_morphemes(self) -> dict[str:dict[str:list[conllx.Morpheme]]]:
         s_prn_morphemes = self._get_s_prn_morphemes()
         s_pp_morphemes = self._get_s_pp_morphemes(s_prn_morphemes)
@@ -227,6 +228,8 @@ class HebrewMorphAnalyzer:
             prp_suffix = prp[prp_feats]
             prp_suffix_builder.form_is(prp_suffix.form)
             prp_suffix_builder.lemma_is(prp_suffix.lemma)
+            prp_suffix_builder.cpostag_is(prp_suffix.cpostag)
+            prp_suffix_builder.fpostag_is(prp_suffix.fpostag)
             prp_suffix = prp_suffix_builder.build()
             prp_analysis = Analysis.Builder(analysis).suffixes_is([prp_suffix]).build()
             extracted[feats].add(prp_analysis)
@@ -247,6 +250,7 @@ class HebrewMorphAnalyzer:
         s_prn_lemma = self._suffix_lemmas['S_PRN']
         pronouns = self.lex[(self.lex.cpostag == 'PRP-PERS') & (self.lex.lemma == s_prn_lemma)].copy()
         pronouns.loc[:, 'cpostag'] = 'S_PRN'
+        pronouns.loc[:, 'fpostag'] = 'PRP-PERS'
         prp_morphemes = bgulex.data_to_morphemes(pronouns)
         extracted = defaultdict(set)
         for prp in prp_morphemes:
@@ -255,8 +259,8 @@ class HebrewMorphAnalyzer:
         return {k: sorted(extracted[k], key=lambda x: len(x.form))[0] for k in extracted}
 
     def _get_lex_entries(self, word: str, with_nn_defaults: bool) -> list[Analysis]:
-        data = _get_lexical_data(word, self.lex_vocab, self.lex)
-        lex_analyses = _lex_data_to_analyses(word, data)
+        data = _get_lexical_data_entry(word, self.lex_vocab, self.lex)
+        lex_analyses = _lex_data_entry_to_analyses(word, data)
         if not lex_analyses:
             if self.is_numeral(word):
                 lex_analyses = _get_default_analyses(word, self._default_numeral_analyses)
@@ -265,7 +269,7 @@ class HebrewMorphAnalyzer:
         return lex_analyses
 
     def _get_preflex_entries(self, prefix: str) -> list[Analysis]:
-        data = _get_lexical_data(prefix, self.preflex_vocab, self.preflex)
+        data = _get_lexical_data_entry(prefix, self.preflex_vocab, self.preflex)
         return _preflex_data_to_analyses(data)
 
     # Break down the word into all possible prefixes and remainders
@@ -307,7 +311,7 @@ def _get_default_analyses(word: str, defaults: list[Analysis]) -> list[Analysis]
     for a in defaults:
         # m = conllx.Morpheme.Builder(a.base).form_is(word).lemma_is(word).build()
         m = conllx.Morpheme.Builder(a.base).form_is(word).build()
-        analyses.append(Analysis.Builder(a).base_is(m).build())
+        analyses.append(Analysis.Builder(a).word_is(word).base_is(m).build())
     return analyses
 
 
@@ -320,22 +324,22 @@ def _prepare_default_analyses(tags: list) -> list[Analysis]:
     return analyses
 
 
-def _get_lexical_data(word: str, vocab: set[str], lexicon: pd.DataFrame) -> pd.DataFrame:
+def _get_lexical_data_entry(word: str, vocab: set[str], lexicon: pd.DataFrame) -> pd.DataFrame:
     if word in vocab:
         return lexicon.loc[word].copy()
     return pd.DataFrame()
 
 
-def _lex_data_to_analyses(word: str, data: pd.DataFrame) -> list[Analysis]:
+def _lex_data_entry_to_analyses(word: str, data: pd.DataFrame) -> list[Analysis]:
     analyses = []
-    # Group by analysis index, level=0 is the word level (1=analysis, 2=morpheme)
+    # Group by analysis index, level=0 is the word level (0=word, 1=analysis, 2=morpheme)
     for _, analysis_data in data.groupby(level=0):
-        analysis = _lex_data_to_analysis(word, analysis_data)
+        analysis = _lex_data_entry_to_analysis(word, analysis_data)
         analyses.append(analysis)
     return analyses
 
 
-def _lex_data_to_analysis(word: str, analysis_data: pd.DataFrame) -> Analysis:
+def _lex_data_entry_to_analysis(word: str, analysis_data: pd.DataFrame) -> Analysis:
     prefix, base, suffix = bgulex.data_to_morphemes(analysis_data)
     analysis_builder = Analysis.Builder().word_is(word).base_is(base)
     if prefix:
