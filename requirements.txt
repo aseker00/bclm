@@ -1,0 +1,10 @@
+torch~=2.1
+transformers~=4.34
+datasets~=2.14
+pandas~=2.1
+tokenizers~=0.14
+numpy~=1.26
+tqdm~=4.65
+pyarrow~=13.0
+h5py~=3.10
+pygtrie~=2.5
