@@ -1,7 +1,7 @@
 from copy import copy
 from pathlib import Path
 
-from bclm.data_processing.format import conll_utils
+from bclm.data.format import conll_utils
 from collections import defaultdict
 
 # SPMRL Lattice format is described in "Input Formats" section of the SPMRL14 shared task description:

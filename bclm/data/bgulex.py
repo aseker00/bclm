@@ -1,8 +1,8 @@
 import logging
 
 import pandas as pd
-from bclm.data_processing import hebtb, hebtagset
-from bclm.data_processing.format import conllx
+from bclm.data import hebtb, hebtagset
+from bclm.data.format import conllx
 from pathlib import Path
 import random
 

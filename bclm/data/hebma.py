@@ -1,7 +1,7 @@
 import pandas as pd
 from collections import defaultdict
-from bclm.data_processing import hebtb, bgulex, hebtagset
-from bclm.data_processing.format import conllx
+from bclm.data import hebtb, bgulex, hebtagset
+from bclm.data.format import conllx
 from pathlib import Path
 import re
 

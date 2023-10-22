@@ -8,9 +8,9 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
-from bclm.data_processing import bgulex
-from bclm.data_processing import hebma
-from bclm.modeling.common.token_embedding_model import TokenEmbeddingModel
+from bclm.data import bgulex
+from bclm.data import hebma
+from bclm.model.common.token_embedding_model import TokenEmbeddingModel
 
 
 class MorphEmbeddingModel(nn.Module):

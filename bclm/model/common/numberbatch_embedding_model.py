@@ -6,12 +6,12 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
-from bclm.data_processing import numberbatch, bgulex
-from bclm.data_processing import hebma
-from bclm.modeling.common.morph_embedding_model import MorphEmbeddingModel
-from bclm.modeling.common.morph_embedding_model import to_morph_input_sample
-from bclm.modeling.common.morph_embedding_model import create_morph_emb_model
-from bclm.modeling.common.token_embedding_model import TokenEmbeddingModel
+from bclm.data import numberbatch, bgulex
+from bclm.data import hebma
+from bclm.model.common.morph_embedding_model import MorphEmbeddingModel
+from bclm.model.common.morph_embedding_model import to_morph_input_sample
+from bclm.model.common.morph_embedding_model import create_morph_emb_model
+from bclm.model.common.token_embedding_model import TokenEmbeddingModel
 
 import pygtrie
 import re

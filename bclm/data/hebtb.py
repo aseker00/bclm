@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from bclm.data_processing import vocab
-from bclm.data_processing import hebtagset
-from bclm.data_processing.format import conllx
+from bclm.data import vocab
+from bclm.data import hebtagset
+from bclm.data.format import conllx
 
 # ['ID', 'FORM', 'LEMMA', 'CPOSTAG', 'FPOSTAG', 'FEATS', 'HEAD', 'DEPREL', 'TOKEN_ID', 'TOKEN']
 MORPH_DEP_COLUMN_NAMES = conllx.CONLL_COLUMN_NANES[:-2] + conllx.LATTICE_COLUMN_NAMES[-1:] + ['TOKEN']
